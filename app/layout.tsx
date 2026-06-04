@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
+import { NavProgress } from "@/components/NavProgress";
 
 export const metadata: Metadata = {
   title: "Reveal AI — Voice Says Everything",
@@ -15,7 +16,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <NavProgress />
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

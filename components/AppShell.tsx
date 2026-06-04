@@ -1,5 +1,6 @@
 'use client';
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
 import { Icon } from './Icon';
@@ -55,10 +56,7 @@ export function AppShell({
     .join('')
     .toUpperCase();
 
-  const handleNav = (href: string) => {
-    setSidebarOpen(false);
-    router.push(href);
-  };
+  const closeSidebar = () => setSidebarOpen(false);
 
   const handleSignOut = async () => {
     try {
@@ -96,8 +94,10 @@ export function AppShell({
           boxShadow: isMobile && sidebarOpen ? '0 0 30px rgba(0,0,0,0.5)' : 'none',
         }}
       >
-        <button
-          onClick={() => handleNav('/home')}
+        <Link
+          href="/home"
+          prefetch
+          onClick={closeSidebar}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -105,11 +105,12 @@ export function AppShell({
             padding: '4px 8px 18px',
             marginBottom: 8,
             borderBottom: `1px solid ${COLORS.cardBorder}`,
+            textDecoration: 'none',
           }}
         >
           <Logo size={32} />
           <LogoText size={18} />
-        </button>
+        </Link>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
           {NAV.map((item) => {
@@ -117,10 +118,11 @@ export function AppShell({
             return (
               <SidebarItem
                 key={item.href}
+                href={item.href}
                 icon={item.icon}
                 label={item.label}
                 active={active}
-                onClick={() => handleNav(item.href)}
+                onClick={closeSidebar}
               />
             );
           })}
@@ -292,8 +294,9 @@ export function AppShell({
           </div>
 
           {!isMobile && (
-            <button
-              onClick={() => router.push('/settings')}
+            <Link
+              href="/settings"
+              prefetch
               aria-label="Settings"
               style={{
                 width: 40,
@@ -304,10 +307,11 @@ export function AppShell({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                textDecoration: 'none',
               }}
             >
               <Icon name="settings" size={18} color={COLORS.textSecondary} />
-            </button>
+            </Link>
           )}
         </header>
 
@@ -330,11 +334,13 @@ export function AppShell({
 }
 
 function SidebarItem({
+  href,
   icon,
   label,
   active,
   onClick,
 }: {
+  href: string;
   icon: string;
   label: string;
   active: boolean;
@@ -349,7 +355,9 @@ function SidebarItem({
   const color = active || hover ? COLORS.white : COLORS.textSecondary;
 
   return (
-    <button
+    <Link
+      href={href}
+      prefetch
       onClick={onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
@@ -366,11 +374,12 @@ function SidebarItem({
         fontSize: 14,
         fontWeight: 600,
         textAlign: 'left',
+        textDecoration: 'none',
         transition: 'background 0.15s ease, color 0.15s ease',
       }}
     >
       <Icon name={icon} size={18} color={color} />
       <span>{label}</span>
-    </button>
+    </Link>
   );
 }
