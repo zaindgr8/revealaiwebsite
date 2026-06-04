@@ -108,6 +108,90 @@ function TherapyInner() {
           </button>
         </div>
 
+        {(results.transcript || results.emotional_mirror) && (
+          <div
+            style={{
+              background: `linear-gradient(135deg, rgba(0,147,208,0.08), rgba(2,218,139,0.06))`,
+              border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 18,
+              padding: 20,
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                marginBottom: 12,
+              }}
+            >
+              <Icon name="mic" size={16} color={COLORS.blue} />
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: COLORS.blue,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                }}
+              >
+                Voice Mirror
+              </span>
+            </div>
+
+            {results.transcript && (
+              <div style={{ marginBottom: results.emotional_mirror ? 14 : 0 }}>
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: COLORS.textMuted,
+                    marginBottom: 4,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  What we heard you say
+                </div>
+                <div
+                  style={{
+                    fontSize: 14,
+                    color: COLORS.white,
+                    lineHeight: 1.6,
+                    fontStyle: 'italic',
+                  }}
+                >
+                  &ldquo;{results.transcript}&rdquo;
+                </div>
+              </div>
+            )}
+
+            {results.emotional_mirror && (
+              <div
+                style={{
+                  paddingTop: results.transcript ? 14 : 0,
+                  borderTop: results.transcript ? `1px solid ${COLORS.cardBorder}` : 'none',
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: COLORS.textMuted,
+                    marginBottom: 4,
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  How your voice sounded
+                </div>
+                <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
+                  {results.emotional_mirror}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <Grid cols={2}>
           <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <CircularProgress

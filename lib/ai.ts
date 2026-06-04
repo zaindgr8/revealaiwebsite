@@ -14,6 +14,8 @@ export type TherapySession = {
   insight: string;
   tips: string[];
   daily_prompt?: string;
+  transcript?: string;
+  emotional_mirror?: string;
   duration_seconds?: number;
 };
 
@@ -83,7 +85,7 @@ export async function getAllSessionsForExport() {
   const { data, error } = await supabase
     .from('therapy_sessions')
     .select(
-      'created_at, mood_score, energy, stress, positivity, confidence, pace, detected_mode, insight, tips, duration_seconds'
+      'created_at, mood_score, energy, stress, positivity, confidence, pace, detected_mode, insight, tips, transcript, emotional_mirror, duration_seconds'
     )
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);

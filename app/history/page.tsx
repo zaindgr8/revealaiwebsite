@@ -215,6 +215,23 @@ function HistoryInner() {
                   >
                     {fmtFullDate(item.created_at)}
                   </div>
+                  {item.transcript && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: COLORS.white,
+                        fontStyle: 'italic',
+                        lineHeight: 1.4,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        marginBottom: 4,
+                      }}
+                    >
+                      &ldquo;{item.transcript}&rdquo;
+                    </div>
+                  )}
                   {item.insight && (
                     <div
                       style={{
