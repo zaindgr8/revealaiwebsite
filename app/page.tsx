@@ -1,366 +1,608 @@
 'use client';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { COLORS } from '@/lib/theme';
-import { Logo, LogoText } from '@/components/Logo';
-import { Icon } from '@/components/Icon';
+import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-import { Grid } from '@/components/Grid';
+import './landing.css';
 
-const features = [
-  {
-    emoji: '🧠',
-    title: 'Your Loyal Friend',
-    desc: 'Hears your burnout 7–14 days before you realize it. Understands your emotions. Tells you what you lack and what you must do.',
-  },
-  {
-    emoji: '🔍',
-    title: 'Your Mind Reader',
-    desc: 'Senses conversations in your daily life — dating, corporate, social. Detects real vs fake. Jealousy. True interest. Gives you complete insights.',
-  },
-  {
-    emoji: '🎤',
-    title: 'Your Voice Coach',
-    desc: 'Train before the interview, date, or boardroom. Record your voice. Get real-time suggestions. Sound confident.',
-  },
-];
-
-const stats = [
-  { value: '60s', label: 'Daily check-in' },
-  { value: '7-14d', label: 'Early burnout signal' },
-  { value: '100%', label: 'Private by default' },
-];
+const WAVE_BAR_COUNT = 40;
+// Deterministic pseudo-random heights (module-level so they're stable across renders
+// and don't violate React purity rules). Rounded to integers so SSR and CSR produce
+// identical serialized strings (avoids hydration mismatch on floating-point precision).
+const WAVE_BAR_HEIGHTS: number[] = Array.from({ length: WAVE_BAR_COUNT }, (_, i) => {
+  const seed = Math.sin(i * 12.9898) * 43758.5453;
+  const frac = seed - Math.floor(seed);
+  return Math.round(15 + frac * 50);
+});
 
 export default function LandingPage() {
-  const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
 
+  // CTA destination — already signed in users skip auth.
+  const ctaHref = user ? '/home' : '/signup';
+
+  // Nav scroll effect
   useEffect(() => {
-    if (!loading && user) router.replace('/home');
-  }, [user, loading, router]);
+    const onScroll = () => setScrolled(window.scrollY > 50);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Scroll reveal via IntersectionObserver
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const targets = root.querySelectorAll<HTMLElement>('.reveal');
+    const obs = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry, i) => {
+          if (entry.isIntersecting) {
+            const target = entry.target as HTMLElement;
+            setTimeout(() => target.classList.add('visible'), i * 100);
+            obs.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+    targets.forEach((el) => obs.observe(el));
+    return () => obs.disconnect();
+  }, []);
+
+  const closeMenu = () => setMenuOpen(false);
+
+  const scrollTo = (id: string) => {
+    closeMenu();
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        background: COLORS.background,
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      {/* decorative glows */}
-      <div
-        style={{
-          position: 'absolute',
-          top: -180,
-          right: -120,
-          width: 460,
-          height: 460,
-          borderRadius: '50%',
-          background: COLORS.blue,
-          opacity: 0.08,
-          filter: 'blur(40px)',
-          pointerEvents: 'none',
-        }}
-      />
-      <div
-        style={{
-          position: 'absolute',
-          bottom: -200,
-          left: -160,
-          width: 460,
-          height: 460,
-          borderRadius: '50%',
-          background: COLORS.green,
-          opacity: 0.06,
-          filter: 'blur(40px)',
-          pointerEvents: 'none',
-        }}
-      />
+    <div ref={rootRef} className="landing-root">
+      {/* Animated background orbs */}
+      <div className="bg-orbs" aria-hidden="true">
+        <div className="orb" />
+        <div className="orb" />
+        <div className="orb" />
+      </div>
 
-      {/* Top nav */}
-      <header
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '20px 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Logo size={36} />
-          <LogoText size={20} />
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => router.push('/login')}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 12,
-              color: COLORS.textSecondary,
-              fontSize: 14,
-              fontWeight: 700,
-            }}
-          >
-            Log in
-          </button>
-          <button
-            onClick={() => router.push('/signup')}
-            style={{
-              padding: '10px 18px',
-              borderRadius: 12,
-              background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
-              color: COLORS.white,
-              fontSize: 14,
-              fontWeight: 700,
-            }}
-          >
-            Get Started
-          </button>
-        </div>
-      </header>
+      {/* Nav */}
+      <nav className={`landing-nav${scrolled ? ' scrolled' : ''}`}>
+        <button
+          type="button"
+          className="nav-logo"
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          aria-label="Reveal AI"
+        >
+          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M8 22 L14 22 L20 10 L26 30 L32 18 L36 18"
+              stroke="url(#navGrad)"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            <defs>
+              <linearGradient id="navGrad" x1="8" y1="20" x2="36" y2="20">
+                <stop stopColor="#0093d0" />
+                <stop offset="1" stopColor="#02da8b" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <span>
+            Reveal<em> AI</em>
+          </span>
+        </button>
+
+        <ul className={`nav-links${menuOpen ? ' show' : ''}`}>
+          <li>
+            <button type="button" onClick={() => scrollTo('problems')}>
+              Problem
+            </button>
+          </li>
+          <li>
+            <button type="button" onClick={() => scrollTo('features')}>
+              Features
+            </button>
+          </li>
+          <li>
+            <button type="button" onClick={() => scrollTo('how')}>
+              How It Works
+            </button>
+          </li>
+          <li>
+            <Link href={ctaHref} prefetch className="nav-cta" onClick={closeMenu}>
+              {user ? 'Open Dashboard' : 'Get Started'}
+            </Link>
+          </li>
+        </ul>
+
+        <button
+          type="button"
+          className="mobile-toggle"
+          onClick={() => setMenuOpen((v) => !v)}
+          aria-label="Menu"
+          aria-expanded={menuOpen}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+      </nav>
 
       {/* Hero */}
-      <section
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '60px 24px 40px',
-          textAlign: 'center',
-        }}
-      >
-        <div
-          style={{
-            display: 'inline-block',
-            background: 'rgba(0, 147, 208, 0.12)',
-            border: '1px solid rgba(0, 147, 208, 0.3)',
-            color: COLORS.blue,
-            fontSize: 12,
-            fontWeight: 700,
-            padding: '6px 14px',
-            borderRadius: 20,
-            marginBottom: 24,
-            letterSpacing: 0.5,
-          }}
-        >
-          VOICE SAYS EVERYTHING
+      <section className="hero" id="hero">
+        <div className="hero-content">
+          <div className="hero-badge">
+            <span className="dot" />
+            AI-Powered Voice Analysis
+          </div>
+          <h1>
+            Your Voice Says
+            <br />
+            <span className="gradient-text">Everything</span>
+          </h1>
+          <p>
+            Understand yourself. Decode others. Master your tone. Reveal AI listens to <em>how</em>{' '}
+            you say it — not just what you say.
+          </p>
+          <div className="hero-buttons">
+            <Link href={ctaHref} prefetch className="btn-store primary">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+              </svg>
+              <div className="store-text">
+                <small>{user ? 'Continue to' : 'Get started on'}</small>
+                <strong>{user ? 'Dashboard' : 'Web App'}</strong>
+              </div>
+            </Link>
+            <Link href={ctaHref} prefetch className="btn-store secondary">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path
+                  d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 01-.61-.92V2.734a1 1 0 01.609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.807 1.626a1 1 0 010 1.732l-2.807 1.626L15.206 12l2.492-2.492zM5.864 2.658L16.8 8.991l-2.302 2.302-8.634-8.635z"
+                  fill="#fff"
+                />
+              </svg>
+              <div className="store-text">
+                <small>Coming soon to</small>
+                <strong>Mobile App</strong>
+              </div>
+            </Link>
+          </div>
         </div>
-        <h1
-          style={{
-            fontSize: 'clamp(34px, 5.5vw, 60px)',
-            fontWeight: 800,
-            color: COLORS.white,
-            lineHeight: 1.1,
-            margin: 0,
-            marginBottom: 20,
-            maxWidth: 880,
-            marginLeft: 'auto',
-            marginRight: 'auto',
-          }}
-        >
-          Your AI companion that
-          <br />
-          <span className="gradient-text">hears what you can&apos;t say</span>
-        </h1>
-        <p
-          style={{
-            fontSize: 'clamp(15px, 1.6vw, 18px)',
-            color: COLORS.textSecondary,
-            lineHeight: 1.6,
-            margin: '0 auto 36px',
-            maxWidth: 640,
-          }}
-        >
-          Reveal AI listens to a 60-second check-in and decodes your mood, energy and stress —
-          spotting burnout weeks before you would. Private. Honest. Always there.
-        </p>
-        <div
-          style={{
-            display: 'flex',
-            gap: 12,
-            justifyContent: 'center',
-            flexWrap: 'wrap',
-            marginBottom: 48,
-          }}
-        >
-          <button
-            onClick={() => router.push('/signup')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '14px 26px',
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
-              color: COLORS.white,
-              fontSize: 15,
-              fontWeight: 700,
-            }}
-          >
-            Get Started Free
-            <Icon name="arrow-forward" size={18} color={COLORS.white} />
-          </button>
-          <button
-            onClick={() => router.push('/login')}
-            style={{
-              padding: '14px 26px',
-              borderRadius: 14,
-              background: COLORS.card,
-              border: `1px solid ${COLORS.cardBorder}`,
-              color: COLORS.white,
-              fontSize: 15,
-              fontWeight: 700,
-            }}
-          >
-            I already have an account
-          </button>
+        <div className="hero-scroll" aria-hidden="true">
+          <span>Scroll</span>
+          <div className="scroll-line" />
         </div>
+      </section>
 
-        {/* Stats strip */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'center',
-            gap: 40,
-            flexWrap: 'wrap',
-          }}
-        >
-          {stats.map((s) => (
-            <div key={s.label} style={{ textAlign: 'center' }}>
-              <div
-                style={{
-                  fontSize: 26,
-                  fontWeight: 800,
-                  color: COLORS.white,
-                  lineHeight: 1,
-                }}
-              >
-                {s.value}
-              </div>
-              <div
-                style={{
-                  fontSize: 12,
-                  color: COLORS.textMuted,
-                  marginTop: 6,
-                  textTransform: 'uppercase',
-                  letterSpacing: 1,
-                }}
-              >
-                {s.label}
-              </div>
+      {/* Problems */}
+      <section className="problems" id="problems">
+        <div className="container">
+          <div className="reveal">
+            <div className="section-label">The Problem</div>
+            <h2 className="section-title">
+              Three Silent Battles
+              <br />
+              You&apos;re Fighting
+            </h2>
+            <p className="section-desc">
+              Every day, your voice hides more than it reveals. These invisible struggles hold you
+              back.
+            </p>
+          </div>
+          <div className="problems-grid">
+            <div className="problem-card reveal">
+              <div className="problem-icon">😔</div>
+              <h3>Burning Out in Silence</h3>
+              <p>
+                You&apos;re exhausted. Energy dropping. But you don&apos;t realize it until it&apos;s
+                too late. No one to listen. No one to truly understand.
+              </p>
             </div>
-          ))}
+            <div className="problem-card reveal">
+              <div className="problem-icon">🎭</div>
+              <h3>Reading People Wrong</h3>
+              <p>
+                People around you mask their intentions. Are they genuine? Faking? Jealous? You
+                can&apos;t tell — always a step behind.
+              </p>
+            </div>
+            <div className="problem-card reveal">
+              <div className="problem-icon">🎤</div>
+              <h3>Not Sounding Like Yourself</h3>
+              <p>
+                You know what to say, but your voice doesn&apos;t match. Your tone is weak. Your
+                energy is off. You sound less confident than you are.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
       {/* Features */}
-      <section
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          maxWidth: 1200,
-          margin: '0 auto',
-          padding: '40px 24px 80px',
-        }}
-      >
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <h2 style={{ fontSize: 28, fontWeight: 800, color: COLORS.white, margin: 0 }}>
-            Three sides of you, one voice.
-          </h2>
-          <p style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 10 }}>
-            Reveal AI works as your friend, your mind reader and your coach.
-          </p>
-        </div>
-        <Grid cols={3}>
-          {features.map((f) => (
-            <div
-              key={f.title}
-              style={{
-                background: COLORS.card,
-                border: `1px solid ${COLORS.cardBorder}`,
-                borderRadius: 22,
-                padding: 28,
-              }}
-            >
-              <div style={{ fontSize: 40, marginBottom: 16 }}>{f.emoji}</div>
-              <div
-                style={{
-                  fontSize: 18,
-                  fontWeight: 800,
-                  color: COLORS.white,
-                  marginBottom: 10,
-                }}
-              >
-                {f.title}
-              </div>
-              <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-                {f.desc}
-              </div>
+      <section className="features" id="features">
+        <div className="container">
+          <div className="reveal" style={{ textAlign: 'center', marginBottom: 80 }}>
+            <div className="section-label" style={{ justifyContent: 'center' }}>
+              The Solution
             </div>
-          ))}
-        </Grid>
+            <h2 className="section-title">
+              Your Loyal <span className="gradient-text">Companion</span>
+            </h2>
+            <p className="section-desc" style={{ margin: '0 auto' }}>
+              Reveal AI listens — really listens. Not to what you say, but to how you say it.
+            </p>
+          </div>
 
-        {/* CTA strip */}
-        <div
-          style={{
-            marginTop: 56,
-            background: `linear-gradient(135deg, rgba(0,147,208,0.12), rgba(2,218,139,0.08))`,
-            border: '1px solid rgba(0,147,208,0.25)',
-            borderRadius: 24,
-            padding: '36px 28px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 20,
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.white, marginBottom: 8 }}>
-              Start your first 60-second check-in
+          {/* Feature 1 */}
+          <div className="feature-block reveal">
+            <div className="feature-text">
+              <div className="feature-number">01</div>
+              <h3>Personal Therapy Coach</h3>
+              <p>
+                Record 60 seconds each morning. AI analyzes your tone, pace, and energy — detecting
+                burnout patterns 7–14 days before you feel it. Get emotional insights no one else
+                can give you.
+              </p>
+              <div className="feature-tags">
+                <span>Burnout Detection</span>
+                <span>Daily Check-ins</span>
+                <span>Early Warning</span>
+              </div>
             </div>
-            <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.55 }}>
-              Free to try. No card. Your audio is deleted after analysis.
+            <div className="feature-visual">
+              <div className="feature-mockup">
+                <div className="mockup-header">
+                  <div className="mockup-avatar">
+                    <svg viewBox="0 0 24 24" fill="#fff" width="20" height="20">
+                      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5z" />
+                      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                    </svg>
+                  </div>
+                  <div className="mockup-meta">
+                    <strong>Morning Check-in</strong>
+                    <span>Recording — 0:47</span>
+                  </div>
+                </div>
+                <div className="mockup-wave">
+                  {WAVE_BAR_HEIGHTS.map((h, i) => (
+                    <span
+                      key={i}
+                      className="bar"
+                      style={{ animationDelay: `${i * 0.06}s`, height: `${h}px` }}
+                    />
+                  ))}
+                </div>
+                <div className="mockup-result">
+                  <div className="label">Mood Analysis</div>
+                  <div className="emotion">Calm &amp; Focused</div>
+                  <div className="confidence">Confidence: 87%</div>
+                  <div className="bar-bg">
+                    <div className="bar-fill" />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-          <button
-            onClick={() => router.push('/signup')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '14px 24px',
-              borderRadius: 14,
-              background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
-              color: COLORS.white,
-              fontSize: 15,
-              fontWeight: 700,
-            }}
-          >
-            Create my account
-            <Icon name="arrow-forward" size={18} color={COLORS.white} />
-          </button>
+
+          {/* Feature 2 */}
+          <div className="feature-block reverse reveal">
+            <div className="feature-text">
+              <div className="feature-number">02</div>
+              <h3>Intent Detector</h3>
+              <p>
+                Record conversations with consent. Reveal AI reveals true intentions behind
+                people&apos;s words. Are they genuine? Jealous? Manipulative? Get real analysis of
+                how people treat you.
+              </p>
+              <div className="feature-tags">
+                <span>Sentiment Analysis</span>
+                <span>Intent Detection</span>
+                <span>Real Insights</span>
+              </div>
+            </div>
+            <div className="feature-visual">
+              <div
+                className="feature-mockup"
+                style={{
+                  background: 'linear-gradient(145deg, rgba(2,218,139,0.12), rgba(0,147,208,0.08))',
+                }}
+              >
+                <div className="mockup-header">
+                  <div
+                    className="mockup-avatar"
+                    style={{ background: 'linear-gradient(135deg,#02da8b,#0093d0)' }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="#fff" width="20" height="20">
+                      <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
+                    </svg>
+                  </div>
+                  <div className="mockup-meta">
+                    <strong>Conversation Analysis</strong>
+                    <span>2 speakers detected</span>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    gap: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      background: 'rgba(2,218,139,0.08)',
+                      borderRadius: 12,
+                      borderLeft: '3px solid var(--green)',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.7rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: 1,
+                        color: 'var(--green)',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Speaker 1
+                    </div>
+                    <div style={{ color: 'var(--white)', fontSize: '0.9rem', fontWeight: 600 }}>
+                      Genuine Interest
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>
+                      Confidence 92%
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      padding: '14px 16px',
+                      background: 'rgba(255,180,0,0.06)',
+                      borderRadius: 12,
+                      borderLeft: '3px solid #f0a030',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: '0.7rem',
+                        textTransform: 'uppercase',
+                        letterSpacing: 1,
+                        color: '#f0a030',
+                        marginBottom: 4,
+                      }}
+                    >
+                      Speaker 2
+                    </div>
+                    <div style={{ color: 'var(--white)', fontSize: '0.9rem', fontWeight: 600 }}>
+                      Guarded / Cautious
+                    </div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>
+                      Confidence 78%
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Feature 3 */}
+          <div className="feature-block reveal">
+            <div className="feature-text">
+              <div className="feature-number">03</div>
+              <h3>Voice Tone Coach</h3>
+              <p>
+                Going on a date? Interview? Important meeting? Train your voice beforehand. Record
+                yourself and get real-time suggestions on tone, energy, and confidence. Sound like
+                your best self.
+              </p>
+              <div className="feature-tags">
+                <span>Real-time Feedback</span>
+                <span>Confidence Training</span>
+                <span>Tone Mastery</span>
+              </div>
+            </div>
+            <div className="feature-visual">
+              <div
+                className="feature-mockup"
+                style={{
+                  background: 'linear-gradient(145deg, rgba(0,147,208,0.15), rgba(2,218,139,0.05))',
+                }}
+              >
+                <div className="mockup-header">
+                  <div className="mockup-avatar">
+                    <svg viewBox="0 0 24 24" fill="#fff" width="20" height="20">
+                      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z" />
+                      <path d="M12 15l1.57-3.43L17 10l-3.43-1.57L12 5l-1.57 3.43L7 10l3.43 1.57z" />
+                    </svg>
+                  </div>
+                  <div className="mockup-meta">
+                    <strong>Voice Training</strong>
+                    <span>Practice Mode</span>
+                  </div>
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    gap: 16,
+                  }}
+                >
+                  <ToneRow label="Confidence" value="High" color="var(--green)" width="82%" />
+                  <ToneBar width="82%" />
+                  <ToneRow label="Energy" value="Balanced" color="var(--blue)" width="68%" />
+                  <ToneBar
+                    width="68%"
+                    fill="linear-gradient(90deg,#0093d0,#02da8b)"
+                  />
+                  <ToneRow label="Clarity" value="Excellent" color="var(--green)" width="91%" />
+                  <ToneBar width="91%" />
+                </div>
+                <div
+                  style={{
+                    marginTop: 16,
+                    textAlign: 'center',
+                    padding: 12,
+                    background: 'rgba(2,218,139,0.08)',
+                    borderRadius: 12,
+                  }}
+                >
+                  <span style={{ fontSize: '0.8rem', color: 'var(--green)', fontWeight: 600 }}>
+                    💡 Tip: Slow down slightly for authority
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
-      <footer
-        style={{
-          position: 'relative',
-          zIndex: 2,
-          textAlign: 'center',
-          padding: '24px 24px 40px',
-          color: COLORS.textMuted,
-          fontSize: 12,
-        }}
-      >
-        © Reveal AI · Voice Says Everything
+      {/* How it works */}
+      <section className="how-it-works" id="how">
+        <div className="container" style={{ textAlign: 'center' }}>
+          <div className="reveal">
+            <div className="section-label" style={{ justifyContent: 'center' }}>
+              How It Works
+            </div>
+            <h2 className="section-title">Simple as 1-2-3</h2>
+            <p className="section-desc" style={{ margin: '0 auto' }}>
+              Start understanding yourself in under a minute.
+            </p>
+          </div>
+          <div className="steps-container">
+            <Step n={1} title="Record Your Voice" desc="Just 60 seconds each morning. Press record and speak naturally." />
+            <Step n={2} title="AI Analyzes" desc="Our AI decodes tone, pace, energy, and emotional patterns in real time." />
+            <Step n={3} title="Get Insights" desc="Receive actionable feedback, burnout alerts, and voice coaching tips." />
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="cta-section" id="download">
+        <div className="container">
+          <div className="cta-card reveal">
+            <h2>
+              Ready to Decode
+              <br />
+              Your <span className="gradient-text">Voice</span>?
+            </h2>
+            <p>
+              {user
+                ? 'Welcome back. Pick up where you left off.'
+                : 'Create your free account in seconds. Start your journey to self-awareness today.'}
+            </p>
+            <div className="cta-stores">
+              <Link href={ctaHref} prefetch className="btn-store primary">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
+                </svg>
+                <div className="store-text">
+                  <small>{user ? 'Continue to' : 'Get started on'}</small>
+                  <strong>{user ? 'Dashboard' : 'Web App'}</strong>
+                </div>
+              </Link>
+              <Link href={ctaHref} prefetch className="btn-store secondary">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 01-.61-.92V2.734a1 1 0 01.609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.807 1.626a1 1 0 010 1.732l-2.807 1.626L15.206 12l2.492-2.492zM5.864 2.658L16.8 8.991l-2.302 2.302-8.634-8.635z" />
+                </svg>
+                <div className="store-text">
+                  <small>Coming soon to</small>
+                  <strong>Mobile App</strong>
+                </div>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer>
+        <div className="footer-inner">
+          <div className="footer-logo">
+            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M8 22 L14 22 L20 10 L26 30 L32 18 L36 18"
+                stroke="url(#footGrad)"
+                strokeWidth="3"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="none"
+              />
+              <defs>
+                <linearGradient id="footGrad" x1="8" y1="20" x2="36" y2="20">
+                  <stop stopColor="#0093d0" />
+                  <stop offset="1" stopColor="#02da8b" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <span>
+              Reveal<em> AI</em>
+            </span>
+          </div>
+          <p>&copy; 2026 Reveal AI — All rights reserved.</p>
+        </div>
       </footer>
+    </div>
+  );
+}
+
+function Step({ n, title, desc }: { n: number; title: string; desc: string }) {
+  return (
+    <div className="step reveal">
+      <div className="step-number">
+        <span>{n}</span>
+      </div>
+      <h3>{title}</h3>
+      <p>{desc}</p>
+    </div>
+  );
+}
+
+function ToneRow({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+  width: string;
+}) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>{label}</span>
+      <span style={{ fontSize: '0.85rem', color, fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+}
+
+function ToneBar({ width, fill }: { width: string; fill?: string }) {
+  return (
+    <div
+      style={{
+        height: 6,
+        background: 'rgba(255,255,255,0.08)',
+        borderRadius: 6,
+        overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          height: '100%',
+          width,
+          background: fill ?? 'var(--gradient)',
+          borderRadius: 6,
+        }}
+      />
     </div>
   );
 }
