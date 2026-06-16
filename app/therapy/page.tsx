@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
 import { Card } from '@/components/Card';
@@ -12,8 +12,14 @@ import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
-import { useAudioRecorder } from '@/hooks/useAudioRecorder';
-import { analyzeMood, type AnalysisResult } from '@/lib/ai';
+import { useAudioRecorder, type RecordingResult } from '@/hooks/useAudioRecorder';
+import {
+  analyzeMood,
+  buildUserContext,
+  getRecentTherapySessions,
+  type AnalysisResult,
+  type TherapySession,
+} from '@/lib/ai';
 
 const PACE_LABEL: Record<string, string> = { Slow: 'Slow', Normal: 'Normal', Fast: 'Fast' };
 
@@ -32,9 +38,46 @@ function TherapyInner() {
   const [phase, setPhase] = useState<Phase>('record');
   const [results, setResults] = useState<AnalysisResult | null>(null);
   const [analyzeErr, setAnalyzeErr] = useState<string | null>(null);
+  const [previousSession, setPreviousSession] = useState<TherapySession | null>(null);
+  const recentSessionsRef = useRef<TherapySession[]>([]);
 
-  const { isRecording, seconds, start, stop, cancel, error } = useAudioRecorder({
+  // Pre-load recent history once so we can pass context to analyze + show comparison.
+  useEffect(() => {
+    getRecentTherapySessions(14)
+      .then((s) => {
+        recentSessionsRef.current = s;
+        setPreviousSession(s[0] ?? null);
+      })
+      .catch(() => {
+        recentSessionsRef.current = [];
+      });
+  }, []);
+
+  const processAudio = useCallback(
+    async (audio: RecordingResult | null) => {
+      if (!audio) return;
+      setPhase('analyzing');
+      try {
+        const userContext = buildUserContext(recentSessionsRef.current);
+        const data = await analyzeMood({
+          audioBase64: audio.base64,
+          mimeType: audio.mimeType,
+          durationSeconds: audio.durationSeconds,
+          userContext,
+        });
+        setResults(data);
+        setPhase('results');
+      } catch (e) {
+        setAnalyzeErr((e as Error).message || 'Analysis failed.');
+        setPhase('record');
+      }
+    },
+    []
+  );
+
+  const { isRecording, seconds, start, stop, cancel, error, stream } = useAudioRecorder({
     maxSeconds: 60,
+    onComplete: processAudio,
   });
 
   useEffect(() => {
@@ -54,20 +97,7 @@ function TherapyInner() {
     }
     const audio = await stop();
     if (!audio) return;
-
-    setPhase('analyzing');
-    try {
-      const data = await analyzeMood({
-        audioBase64: audio.base64,
-        mimeType: audio.mimeType,
-        durationSeconds: audio.durationSeconds,
-      });
-      setResults(data);
-      setPhase('results');
-    } catch (e) {
-      setAnalyzeErr((e as Error).message || 'Analysis failed.');
-      setPhase('record');
-    }
+    await processAudio(audio);
   };
 
   if (phase === 'results' && results) {
@@ -213,6 +243,13 @@ function TherapyInner() {
             <InlineRow label="Detected mode" value={results.detected_mode} />
           </Card>
         </Grid>
+
+        {previousSession && <ComparisonCard current={results} previous={previousSession} />}
+
+        <PersonalNoteCard
+          current={results}
+          recentSessions={recentSessionsRef.current}
+        />
 
         <Card>
           <CardTitle>🧠 AI Insight</CardTitle>
@@ -395,7 +432,7 @@ function TherapyInner() {
         </button>
 
         <div style={{ fontSize: 40, fontWeight: 800, color: COLORS.white, marginBottom: 4 }}>
-          0:{seconds.toString().padStart(2, '0')}
+          {Math.floor(seconds / 60)}:{(seconds % 60).toString().padStart(2, '0')}
           <span style={{ fontSize: 18, fontWeight: 400, color: COLORS.textMuted }}>
             {' / 1:00'}
           </span>
@@ -404,9 +441,12 @@ function TherapyInner() {
           style={{
             fontSize: 14,
             color: isRecording ? COLORS.danger : COLORS.textSecondary,
+            textAlign: 'center',
           }}
         >
-          {isRecording ? 'Recording... tap to stop' : 'Tap the mic to start recording'}
+          {isRecording
+            ? 'Recording — tap to stop, or wait for auto-finish at 1:00'
+            : 'Tap the mic to start recording'}
         </div>
 
         {analyzeErr && (
@@ -416,7 +456,7 @@ function TherapyInner() {
         )}
 
         <div style={{ marginTop: 32, width: '100%', maxWidth: 360 }}>
-          <WaveformVisualizer active={isRecording} barCount={35} />
+          <WaveformVisualizer active={isRecording} barCount={35} stream={stream} />
         </div>
       </div>
     </AppShell>
@@ -457,6 +497,219 @@ function InlineRow({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
+}
+
+type DiffMeta = {
+  label: string;
+  current: number;
+  delta: number;
+  goodWhen: 'up' | 'down';
+};
+
+function ComparisonCard({
+  current,
+  previous,
+}: {
+  current: AnalysisResult;
+  previous: TherapySession;
+}) {
+  const diffs: DiffMeta[] = [
+    { label: 'Mood', current: current.mood_score, delta: current.mood_score - previous.mood_score, goodWhen: 'up' },
+    { label: 'Energy', current: current.energy, delta: current.energy - previous.energy, goodWhen: 'up' },
+    { label: 'Stress', current: current.stress, delta: current.stress - previous.stress, goodWhen: 'down' },
+    { label: 'Positivity', current: current.positivity, delta: current.positivity - previous.positivity, goodWhen: 'up' },
+  ];
+
+  const prevDate = new Date(previous.created_at);
+  const dateLabel = prevDate.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+
+  return (
+    <Card>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 16,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>
+            📊 Compared to Last Session
+          </div>
+          <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{dateLabel}</div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
+          gap: 10,
+        }}
+      >
+        {diffs.map((d) => (
+          <DiffTile key={d.label} {...d} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function DiffTile({ label, current, delta, goodWhen }: DiffMeta) {
+  const isFlat = delta === 0;
+  const isUp = delta > 0;
+  const isGood = isFlat ? null : (isUp && goodWhen === 'up') || (!isUp && goodWhen === 'down');
+  const color = isFlat ? COLORS.textMuted : isGood ? COLORS.green : COLORS.danger;
+  const arrow = isFlat ? '–' : isUp ? '▲' : '▼';
+  const sign = isUp ? '+' : '';
+
+  return (
+    <div
+      style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: `1px solid ${COLORS.cardBorder}`,
+        borderRadius: 12,
+        padding: '12px 14px',
+      }}
+    >
+      <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+        <span style={{ fontSize: 22, fontWeight: 800, color: COLORS.white }}>{current}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color }}>
+          {arrow} {sign}
+          {delta}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function PersonalNoteCard({
+  current,
+  recentSessions,
+}: {
+  current: AnalysisResult;
+  recentSessions: TherapySession[];
+}) {
+  const lines = buildPersonalNotes(current, recentSessions);
+  if (!lines.length) return null;
+
+  return (
+    <Card>
+      <CardTitle>✨ Personal Notes</CardTitle>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {lines.map((line, i) => (
+          <div
+            key={i}
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              fontSize: 13,
+              color: COLORS.textSecondary,
+              lineHeight: 1.55,
+            }}
+          >
+            <span style={{ fontSize: 16, lineHeight: 1.3, flexShrink: 0 }}>{line.emoji}</span>
+            <span style={{ flex: 1 }}>{line.text}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function buildPersonalNotes(
+  current: AnalysisResult,
+  recent: TherapySession[]
+): { emoji: string; text: string }[] {
+  const notes: { emoji: string; text: string }[] = [];
+  const hour = new Date().getHours();
+  const timeBand =
+    hour < 6 ? 'late night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 22 ? 'evening' : 'night';
+
+  // Streak-aware note
+  const distinctDays = new Set(
+    recent.map((s) => new Date(s.created_at).toDateString())
+  );
+  if (distinctDays.size >= 5) {
+    notes.push({
+      emoji: '🔥',
+      text: `You've shown up ${distinctDays.size} days recently — that consistency is the work. The habit itself is rewiring your self-awareness.`,
+    });
+  } else if (distinctDays.size >= 2) {
+    notes.push({
+      emoji: '🌱',
+      text: `${distinctDays.size}-day rhythm building. Two more sessions this week and the trend signal becomes much sharper.`,
+    });
+  }
+
+  // Time-of-day note
+  if (timeBand === 'morning' && current.energy < 50) {
+    notes.push({
+      emoji: '☕',
+      text: 'Low morning energy — try 5 minutes outside in daylight before your first task. Strongest non-caffeine cortisol lift available.',
+    });
+  } else if (timeBand === 'evening' && current.stress > 60) {
+    notes.push({
+      emoji: '🌙',
+      text: 'Evening stress is high. Avoid making decisions tonight — write down what is pressing you, sleep on it, decide tomorrow.',
+    });
+  } else if (timeBand === 'late night' && current.mood_score < 50) {
+    notes.push({
+      emoji: '💤',
+      text: 'Tough feelings at night get amplified — they look different in daylight. Be gentle with yourself and prioritise sleep.',
+    });
+  }
+
+  // Mode-aware (using recent_modes pattern)
+  if (recent.length >= 3) {
+    const recentModes = recent.slice(0, 3).map((s) => s.detected_mode);
+    const sameMode = recentModes.every((m) => m === current.detected_mode);
+    if (sameMode && current.detected_mode) {
+      notes.push({
+        emoji: '🎯',
+        text: `Your last few sessions have all been "${current.detected_mode}" — there's a clear pattern. Worth sharing with your AI Coach to dig into what's driving it.`,
+      });
+    }
+  }
+
+  // Compare against personal baselines
+  if (recent.length >= 5) {
+    const avgMood = Math.round(recent.reduce((s, x) => s + x.mood_score, 0) / recent.length);
+    if (current.mood_score >= avgMood + 12) {
+      notes.push({
+        emoji: '📈',
+        text: `Today's mood is well above your usual (${avgMood}). Whatever's different today — note it. That's actionable data.`,
+      });
+    } else if (current.mood_score <= avgMood - 12) {
+      notes.push({
+        emoji: '📉',
+        text: `Today scored ${avgMood - current.mood_score} points below your typical mood. One off-day isn't a trend — be honest, not harsh.`,
+      });
+    }
+  }
+
+  // Burnout early warning
+  if (recent.length >= 4) {
+    const recentEnergy = recent.slice(0, 4).map((s) => s.energy);
+    const declining = recentEnergy.every((v, i, arr) => i === 0 || v <= arr[i - 1] + 3);
+    const droppedTotal = recentEnergy[recentEnergy.length - 1] - recentEnergy[0];
+    if (declining && droppedTotal < -15) {
+      notes.push({
+        emoji: '⚠️',
+        text: 'Energy is on a clear downward slope across your last few sessions. This is the 7–14 day burnout window — protect sleep and cut one non-essential commitment this week.',
+      });
+    }
+  }
+
+  // Cap at 3 to avoid wall of text
+  return notes.slice(0, 3);
 }
 
 export default function TherapyPage() {

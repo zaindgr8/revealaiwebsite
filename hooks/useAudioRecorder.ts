@@ -33,10 +33,17 @@ async function blobToBase64(blob: Blob): Promise<string> {
   return btoa(binary);
 }
 
-export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = {}) {
+export function useAudioRecorder({
+  maxSeconds = 60,
+  onComplete,
+}: {
+  maxSeconds?: number;
+  onComplete?: (result: RecordingResult | null) => void;
+} = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -45,6 +52,12 @@ export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = 
   const mimeRef = useRef<string>('audio/webm');
   const secondsRef = useRef(0);
   const stopResolveRef = useRef<((r: RecordingResult | null) => void) | null>(null);
+
+  // Keep latest onComplete in a ref so it's available inside the static onstop handler
+  const onCompleteRef = useRef(onComplete);
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
   useEffect(() => {
     secondsRef.current = seconds;
@@ -60,6 +73,7 @@ export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = 
   const stopStream = () => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    setStream(null);
   };
 
   const start = useCallback(async () => {
@@ -69,12 +83,16 @@ export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = 
     }
     try {
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = mediaStream;
+      setStream(mediaStream);
 
       const mime = pickMimeType();
       mimeRef.current = mime;
-      const recorder = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 });
+      const recorder = new MediaRecorder(mediaStream, {
+        mimeType: mime,
+        audioBitsPerSecond: 64000,
+      });
       chunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
@@ -83,25 +101,33 @@ export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = 
 
       recorder.onstop = async () => {
         cleanupTimer();
-        stopStream();
-        setIsRecording(false);
-        const resolve = stopResolveRef.current;
-        stopResolveRef.current = null;
+
+        let result: RecordingResult | null = null;
         try {
-          if (!chunksRef.current.length) {
-            resolve?.(null);
-            return;
+          if (chunksRef.current.length) {
+            const blob = new Blob(chunksRef.current, { type: mimeRef.current });
+            const base64 = await blobToBase64(blob);
+            result = {
+              base64,
+              mimeType: mimeRef.current,
+              durationSeconds: secondsRef.current,
+            };
           }
-          const blob = new Blob(chunksRef.current, { type: mimeRef.current });
-          const base64 = await blobToBase64(blob);
-          resolve?.({
-            base64,
-            mimeType: mimeRef.current,
-            durationSeconds: secondsRef.current,
-          });
         } catch (err) {
           setError((err as Error).message || 'Failed to read recording');
-          resolve?.(null);
+        }
+
+        stopStream();
+        setIsRecording(false);
+
+        // Manual stop: resolve the awaiting promise.
+        // Auto stop (timer hit max): no awaiting promise → fire onComplete.
+        const resolve = stopResolveRef.current;
+        stopResolveRef.current = null;
+        if (resolve) {
+          resolve(result);
+        } else {
+          onCompleteRef.current?.(result);
         }
       };
 
@@ -112,13 +138,14 @@ export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = 
 
       tickRef.current = setInterval(() => {
         setSeconds((s) => {
-          if (s + 1 >= maxSeconds) {
+          const next = s + 1;
+          if (next >= maxSeconds) {
             if (recorderRef.current && recorderRef.current.state === 'recording') {
               recorderRef.current.stop();
             }
             return maxSeconds;
           }
-          return s + 1;
+          return next;
         });
       }, 1000);
     } catch (e) {
@@ -163,5 +190,5 @@ export function useAudioRecorder({ maxSeconds = 60 }: { maxSeconds?: number } = 
     };
   }, []);
 
-  return { isRecording, seconds, error, start, stop, cancel };
+  return { isRecording, seconds, error, start, stop, cancel, stream };
 }

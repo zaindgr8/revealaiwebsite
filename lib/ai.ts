@@ -21,6 +21,21 @@ export type TherapySession = {
 
 export type AnalysisResult = Omit<TherapySession, 'id' | 'created_at'>;
 
+export type UserContext = {
+  time_of_day: 'morning' | 'afternoon' | 'evening' | 'night';
+  day_of_week: string;
+  hour: number;
+  total_sessions: number;
+  streak_days: number;
+  avg_mood_7d?: number;
+  avg_energy_7d?: number;
+  avg_stress_7d?: number;
+  energy_trend?: 'declining' | 'stable' | 'improving';
+  last_mode?: string;
+  last_mood?: number;
+  recent_modes?: string[];
+};
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 export async function chatTherapy({
@@ -42,21 +57,63 @@ export async function analyzeMood({
   audioBase64,
   mimeType,
   durationSeconds,
+  userContext,
 }: {
   audioBase64: string;
   mimeType: string;
   durationSeconds: number;
+  userContext?: UserContext;
 }): Promise<AnalysisResult> {
   const { data, error } = await supabase.functions.invoke('analyze-mood', {
     body: {
       audio_base64: audioBase64,
       mime_type: mimeType,
       duration_seconds: durationSeconds,
+      user_context: userContext,
     },
   });
   if (error) throw new Error(error.message || 'Analysis failed');
   if (data?.error) throw new Error(data.error);
   return data;
+}
+
+export function buildUserContext(sessions: TherapySession[]): UserContext {
+  const now = new Date();
+  const hour = now.getHours();
+  const timeOfDay: UserContext['time_of_day'] =
+    hour < 6 ? 'night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 22 ? 'evening' : 'night';
+  const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
+
+  const stats = computeStats(sessions);
+  const last7 = (sessions ?? []).slice(0, 7);
+
+  const last = sessions?.[0];
+
+  let energyTrend: UserContext['energy_trend'] = 'stable';
+  if (stats?.energyDeclining) energyTrend = 'declining';
+  else if (last7.length >= 4) {
+    const older = last7.slice(-2).reduce((s, x) => s + x.energy, 0) / 2;
+    const newer = last7.slice(0, 2).reduce((s, x) => s + x.energy, 0) / 2;
+    if (newer > older + 8) energyTrend = 'improving';
+  }
+
+  const avg = (arr: number[]) =>
+    arr.length ? Math.round(arr.reduce((s, n) => s + n, 0) / arr.length) : undefined;
+
+  return {
+    time_of_day: timeOfDay,
+    day_of_week: dayOfWeek,
+    hour,
+    total_sessions: sessions?.length ?? 0,
+    streak_days: stats?.streak ?? 0,
+    avg_mood_7d: avg(last7.map((s) => s.mood_score)),
+    avg_energy_7d: avg(last7.map((s) => s.energy)),
+    avg_stress_7d: avg(last7.map((s) => s.stress)),
+    energy_trend: energyTrend,
+    last_mode: last?.detected_mode,
+    last_mood: last?.mood_score,
+    recent_modes: last7.map((s) => s.detected_mode),
+  };
 }
 
 export async function getRecentTherapySessions(limit = 30): Promise<TherapySession[]> {
