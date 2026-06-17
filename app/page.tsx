@@ -243,7 +243,7 @@ export default function LandingPage() {
           <div className="feature-block reveal">
             <div className="feature-text">
               <div className="feature-number">01</div>
-              <h3>Personal Therapy Coach</h3>
+              <h3>Reflect — Daily Check-in</h3>
               <p>
                 Record 60 seconds each morning. AI analyzes your tone, pace, and energy — detecting
                 burnout patterns 7–14 days before you feel it. Get emotional insights no one else

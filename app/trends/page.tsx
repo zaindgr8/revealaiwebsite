@@ -6,7 +6,15 @@ import { MiniChart } from '@/components/MiniChart';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
-import { computeStats, getRecentTherapySessions, type Stats } from '@/lib/ai';
+import { EarlyWarnings } from '@/components/EarlyWarnings';
+import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
+import { ProfileStats, ProfileStatsExplainer } from '@/components/ProfileStats';
+import {
+  computeStats,
+  getRecentTherapySessions,
+  type Stats,
+  type TherapySession,
+} from '@/lib/ai';
 import { fmtDate } from '@/lib/format';
 
 function motivationalMessage(s: Stats) {
@@ -55,12 +63,19 @@ function motivationalMessage(s: Stats) {
 
 function TrendsInner() {
   const [stats, setStats] = useState<Stats | null>(null);
+  const [sessions, setSessions] = useState<TherapySession[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getRecentTherapySessions(30)
-      .then((sessions) => setStats(computeStats(sessions)))
-      .catch(() => setStats(null))
+    getRecentTherapySessions(60)
+      .then((s) => {
+        setSessions(s);
+        setStats(computeStats(s));
+      })
+      .catch(() => {
+        setSessions([]);
+        setStats(null);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -93,6 +108,14 @@ function TrendsInner() {
 
       {!loading && stats && (
         <>
+          <MedicalDisclaimer variant="banner" />
+
+          <EarlyWarnings sessions={sessions} />
+
+          <ProfileStats sessions={sessions} />
+          <ProfileStatsExplainer />
+          <div style={{ height: 16 }} />
+
           <Grid cols={3} style={{ marginBottom: 16 }}>
             <StatBox big={stats.weeklyAvg.toString()} sub="Avg Mood" />
             <StatBox big={`${stats.streak}🔥`} sub="Day Streak" />

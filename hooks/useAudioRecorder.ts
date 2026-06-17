@@ -52,16 +52,13 @@ export function useAudioRecorder({
   const mimeRef = useRef<string>('audio/webm');
   const secondsRef = useRef(0);
   const stopResolveRef = useRef<((r: RecordingResult | null) => void) | null>(null);
+  const stoppingRef = useRef(false);
+  const cancelledRef = useRef(false);
 
-  // Keep latest onComplete in a ref so it's available inside the static onstop handler
   const onCompleteRef = useRef(onComplete);
   useEffect(() => {
     onCompleteRef.current = onComplete;
   }, [onComplete]);
-
-  useEffect(() => {
-    secondsRef.current = seconds;
-  }, [seconds]);
 
   const cleanupTimer = () => {
     if (tickRef.current) {
@@ -76,6 +73,27 @@ export function useAudioRecorder({
     setStream(null);
   };
 
+  // Stops the recorder safely. Idempotent — multiple calls are fine.
+  // requestData() forces any buffered audio to fire `ondataavailable` before stop.
+  const safeStopRecorder = () => {
+    const rec = recorderRef.current;
+    if (!rec) return;
+    if (stoppingRef.current) return;
+    stoppingRef.current = true;
+    try {
+      if (rec.state === 'recording') {
+        try {
+          rec.requestData();
+        } catch {
+          // requestData may throw on some browsers; ignore and let stop() handle it
+        }
+        rec.stop();
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const start = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       setError('Microphone not available in this browser');
@@ -83,6 +101,10 @@ export function useAudioRecorder({
     }
     try {
       setError(null);
+      cancelledRef.current = false;
+      stoppingRef.current = false;
+      secondsRef.current = 0;
+
       const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = mediaStream;
       setStream(mediaStream);
@@ -99,8 +121,22 @@ export function useAudioRecorder({
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
 
+      recorder.onerror = (e) => {
+        // eslint-disable-next-line no-console
+        console.error('MediaRecorder error:', e);
+      };
+
       recorder.onstop = async () => {
         cleanupTimer();
+
+        // Cancelled flow: throw away everything.
+        if (cancelledRef.current) {
+          chunksRef.current = [];
+          stopStream();
+          setIsRecording(false);
+          stoppingRef.current = false;
+          return;
+        }
 
         let result: RecordingResult | null = null;
         try {
@@ -119,9 +155,8 @@ export function useAudioRecorder({
 
         stopStream();
         setIsRecording(false);
+        stoppingRef.current = false;
 
-        // Manual stop: resolve the awaiting promise.
-        // Auto stop (timer hit max): no awaiting promise → fire onComplete.
         const resolve = stopResolveRef.current;
         stopResolveRef.current = null;
         if (resolve) {
@@ -132,17 +167,22 @@ export function useAudioRecorder({
       };
 
       recorderRef.current = recorder;
-      recorder.start();
+      // Use a 1-second timeslice so chunks flush every second.
+      // Even if the final stop misbehaves, we still have ~all of the audio.
+      recorder.start(1000);
       setIsRecording(true);
       setSeconds(0);
 
       tickRef.current = setInterval(() => {
         setSeconds((s) => {
           const next = s + 1;
+          secondsRef.current = next;
+
           if (next >= maxSeconds) {
-            if (recorderRef.current && recorderRef.current.state === 'recording') {
-              recorderRef.current.stop();
-            }
+            // Stop the ticker first so we don't fire again while waiting on onstop.
+            cleanupTimer();
+            // Then stop the recorder (async — onstop will fire and deliver the result).
+            safeStopRecorder();
             return maxSeconds;
           }
           return next;
@@ -163,23 +203,24 @@ export function useAudioRecorder({
         return;
       }
       stopResolveRef.current = resolve;
-      rec.stop();
+      cleanupTimer();
+      safeStopRecorder();
     });
   }, []);
 
   const cancel = useCallback(async () => {
     cleanupTimer();
-    const rec = recorderRef.current;
-    chunksRef.current = [];
+    cancelledRef.current = true;
     stopResolveRef.current = null;
-    if (rec && rec.state !== 'inactive') {
-      try {
-        rec.stop();
-      } catch {}
+    safeStopRecorder();
+    // If the recorder was already inactive, force cleanup
+    if (!recorderRef.current || recorderRef.current.state === 'inactive') {
+      chunksRef.current = [];
+      stopStream();
+      setIsRecording(false);
+      stoppingRef.current = false;
     }
-    stopStream();
     recorderRef.current = null;
-    setIsRecording(false);
     setSeconds(0);
   }, []);
 

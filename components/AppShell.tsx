@@ -13,7 +13,7 @@ type NavItem = { href: string; label: string; icon: string };
 
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
-  { href: '/therapy', label: 'Therapy Coach', icon: 'pulse' },
+  { href: '/therapy', label: 'Reflect', icon: 'pulse' },
   { href: '/chat', label: 'AI Chat', icon: 'chat' },
   { href: '/trends', label: 'Trends', icon: 'trending-up' },
   { href: '/history', label: 'History', icon: 'time' },

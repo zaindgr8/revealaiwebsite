@@ -8,6 +8,7 @@ import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
+import { EarlyWarnings } from '@/components/EarlyWarnings';
 import { useAuth } from '@/lib/auth-context';
 import {
   computeStats,
@@ -25,6 +26,7 @@ function HomeInner() {
   const router = useRouter();
   const { user } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
+  const [sessions, setSessions] = useState<TherapySession[]>([]);
   const [lastSession, setLastSession] = useState<TherapySession | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
 
@@ -37,9 +39,10 @@ function HomeInner() {
 
   const loadStats = useCallback(async () => {
     try {
-      const sessions = await getRecentTherapySessions(30);
-      setStats(computeStats(sessions));
-      if (sessions.length) setLastSession(sessions[0]);
+      const recent = await getRecentTherapySessions(30);
+      setSessions(recent);
+      setStats(computeStats(recent));
+      if (recent.length) setLastSession(recent[0]);
     } catch {
       setStats(null);
     } finally {
@@ -94,47 +97,7 @@ function HomeInner() {
       </div>
 
       {/* Burnout Alert */}
-      {stats?.energyDeclining && (
-        <button
-          onClick={() => router.push('/therapy')}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-            width: '100%',
-            textAlign: 'left',
-            background: 'rgba(255,184,77,0.08)',
-            border: '1px solid rgba(255,184,77,0.2)',
-            borderRadius: 18,
-            padding: 16,
-            marginBottom: 16,
-          }}
-        >
-          <div
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 12,
-              background: 'rgba(255,184,77,0.15)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="warning" size={20} color={COLORS.warning} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.warning }}>
-              Energy Declining
-            </div>
-            <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
-              Your energy has been dropping recently. Tap for insights.
-            </div>
-          </div>
-          <Icon name="chevron-forward" size={16} color={COLORS.warning} />
-        </button>
-      )}
+      {sessions.length >= 3 && <EarlyWarnings sessions={sessions} />}
 
       {/* Streak Banner */}
       {stats && stats.streak > 1 && (
@@ -461,7 +424,7 @@ function HomeInner() {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>
-              Therapy Coach
+              Reflect
             </span>
             <span
               style={{

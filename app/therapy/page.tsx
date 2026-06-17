@@ -12,6 +12,7 @@ import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
+import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { useAudioRecorder, type RecordingResult } from '@/hooks/useAudioRecorder';
 import {
   analyzeMood,
@@ -104,6 +105,7 @@ function TherapyInner() {
     const moodLabel = labelForMood(results.mood_score);
     return (
       <AppShell title="Analysis Results" subtitle="Your voice, decoded">
+        <MedicalDisclaimer />
         <div
           style={{
             display: 'flex',
@@ -166,7 +168,7 @@ function TherapyInner() {
                   letterSpacing: 0.6,
                 }}
               >
-                Voice Mirror
+                Reveal Voice AI
               </span>
             </div>
 
@@ -355,7 +357,7 @@ function TherapyInner() {
 
   if (phase === 'analyzing') {
     return (
-      <AppShell title="Therapy Coach" subtitle="Analyzing your voice">
+      <AppShell title="Reflect" subtitle="Analyzing your voice">
         <div
           style={{
             minHeight: '60vh',
@@ -380,7 +382,7 @@ function TherapyInner() {
   }
 
   return (
-    <AppShell title="Personal Therapy Coach" subtitle="Record 60 seconds — we listen to your voice">
+    <AppShell title="Reflect" subtitle="Record 60 seconds — we listen to your voice">
       <div
         style={{
           background: COLORS.card,

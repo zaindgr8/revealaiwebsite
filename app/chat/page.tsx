@@ -5,6 +5,7 @@ import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
+import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { chatTherapy, type AnalysisResult, type ChatMessage } from '@/lib/ai';
 
 type Msg = ChatMessage & { id: string };
@@ -98,7 +99,7 @@ function ChatInner() {
 
   return (
     <AppShell
-      title="AI Therapy Chat"
+      title="AI Coach Chat"
       subtitle={`Mood ${results.mood_score} · ${results.detected_mode}`}
       contentMaxWidth={920}
       contentPadding="0"
@@ -123,6 +124,10 @@ function ChatInner() {
           <span style={{ color: modeColor, textTransform: 'capitalize' }}>
             {results.detected_mode}
           </span>
+        </div>
+
+        <div style={{ padding: '14px 24px 0' }}>
+          <MedicalDisclaimer variant="banner" />
         </div>
 
         <div
