@@ -55,7 +55,7 @@ export function SecondaryButton({ title, onClick, icon, style }: Omit<Props, 'di
         borderRadius: 14,
         background: COLORS.card,
         border: `1px solid ${COLORS.cardBorder}`,
-        color: COLORS.white,
+        color: COLORS.textPrimary,
         fontSize: 15,
         fontWeight: 700,
         ...style,

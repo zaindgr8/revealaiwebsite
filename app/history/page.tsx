@@ -78,7 +78,7 @@ function HistoryInner() {
         }}
       >
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.white }}>
+          <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.textPrimary }}>
             All sessions
           </div>
           <div style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 4 }}>
@@ -219,7 +219,7 @@ function HistoryInner() {
                     <div
                       style={{
                         fontSize: 12,
-                        color: COLORS.white,
+                        color: COLORS.textPrimary,
                         fontStyle: 'italic',
                         lineHeight: 1.4,
                         display: '-webkit-box',

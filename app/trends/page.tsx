@@ -156,7 +156,7 @@ function TrendsInner() {
 
           <Grid cols={2} style={{ marginBottom: 16 }}>
             <Card>
-              <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, marginBottom: 16 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16 }}>
                 📊 Highlights
               </div>
               <div
@@ -208,7 +208,7 @@ function TrendsInner() {
               </div>
             ) : (
               <Card>
-                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, marginBottom: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 8 }}>
                   📈 Overall Direction
                 </div>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
@@ -256,7 +256,7 @@ function StatBox({ big, sub }: { big: string; sub: string }) {
         textAlign: 'center',
       }}
     >
-      <div style={{ fontSize: 28, fontWeight: 800, color: COLORS.white }}>{big}</div>
+      <div style={{ fontSize: 28, fontWeight: 800, color: COLORS.textPrimary }}>{big}</div>
       <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }}>{sub}</div>
     </div>
   );
@@ -295,7 +295,7 @@ function ChartCard({
 }) {
   return (
     <Card>
-      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, marginBottom: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16 }}>
         {title}
       </div>
       <MiniChart data={data} color={color} height={110} labels={dates.map(fmtDate)} />

@@ -1,24 +1,25 @@
 export const COLORS = {
-  blue: '#0093d0',
-  green: '#02da8b',
-  dark: '#424242',
+  // Brand accent colors (Reveal AI brand guidelines)
+  blue: '#6f6258',
+  green: '#4f7a43',
+  dark: '#2b2521',
   white: '#ffffff',
 
-  background: '#0a0e1a',
-  card: '#131829',
-  cardBorder: '#1e2540',
-  surface: '#1a2035',
+  background: '#ffffff',
+  card: '#f7f2ed',
+  cardBorder: '#e6dbd1',
+  surface: '#f0e7de',
 
-  textPrimary: '#ffffff',
-  textSecondary: '#8b95b0',
-  textMuted: '#555f7a',
+  textPrimary: '#2b2521',
+  textSecondary: '#6f6258',
+  textMuted: '#a89a8d',
 
-  danger: '#ff4d6a',
-  warning: '#ffb84d',
-  success: '#02da8b',
+  danger: '#c0392b',
+  warning: '#b07d2e',
+  success: '#4f7a43',
 
-  gradientStart: '#0093d0',
-  gradientEnd: '#02da8b',
+  gradientStart: '#c9b8a8',
+  gradientEnd: '#6f6258',
 };
 
 export const MODE_COLOR: Record<string, string> = {

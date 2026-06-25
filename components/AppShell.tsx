@@ -169,7 +169,7 @@ export function AppShell({
               style={{
                 fontSize: 13,
                 fontWeight: 700,
-                color: COLORS.white,
+                color: COLORS.textPrimary,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
@@ -231,7 +231,7 @@ export function AppShell({
             position: 'sticky',
             top: 0,
             zIndex: 20,
-            background: 'rgba(10, 14, 26, 0.85)',
+            background: 'rgba(255, 255, 255, 0.85)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             borderBottom: `1px solid ${COLORS.cardBorder}`,
@@ -257,7 +257,7 @@ export function AppShell({
                 flexShrink: 0,
               }}
             >
-              <Icon name="menu" size={20} color={COLORS.white} />
+              <Icon name="menu" size={20} color={COLORS.textPrimary} />
             </button>
           )}
 
@@ -267,7 +267,7 @@ export function AppShell({
                 style={{
                   fontSize: 18,
                   fontWeight: 800,
-                  color: COLORS.white,
+                  color: COLORS.textPrimary,
                   lineHeight: 1.2,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -348,11 +348,11 @@ function SidebarItem({
 }) {
   const [hover, setHover] = useState(false);
   const bg = active
-    ? 'linear-gradient(135deg, rgba(0, 147, 208, 0.18), rgba(2, 218, 139, 0.12))'
+    ? 'linear-gradient(135deg, rgba(111, 98, 88, 0.18), rgba(201, 184, 168, 0.12))'
     : hover
     ? COLORS.cardBorder
     : 'transparent';
-  const color = active || hover ? COLORS.white : COLORS.textSecondary;
+  const color = active || hover ? COLORS.textPrimary : COLORS.textSecondary;
 
   return (
     <Link
@@ -369,7 +369,7 @@ function SidebarItem({
         padding: '10px 12px',
         borderRadius: 12,
         background: bg,
-        border: active ? '1px solid rgba(0, 147, 208, 0.35)' : '1px solid transparent',
+        border: active ? '1px solid rgba(111, 98, 88, 0.35)' : '1px solid transparent',
         color,
         fontSize: 14,
         fontWeight: 600,

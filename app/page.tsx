@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
+import { Icon } from '@/components/Icon';
 import './landing.css';
 
 const WAVE_BAR_COUNT = 40;
@@ -77,21 +78,34 @@ export default function LandingPage() {
           onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
           aria-label="Reveal AI"
         >
-          <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path
-              d="M8 22 L14 22 L20 10 L26 30 L32 18 L36 18"
-              stroke="url(#navGrad)"
-              strokeWidth="3.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
+          <svg viewBox="0 0 60 52" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <linearGradient id="navGrad" x1="8" y1="20" x2="36" y2="20">
-                <stop stopColor="#0093d0" />
-                <stop offset="1" stopColor="#02da8b" />
+              <linearGradient id="navWave" x1="8" y1="0" x2="48" y2="0" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#2b2521" />
+                <stop offset="55%" stopColor="#c9b8a8" />
+                <stop offset="100%" stopColor="#6f6258" />
+              </linearGradient>
+              <linearGradient id="navBubble" x1="6" y1="4" x2="50" y2="42" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#c9b8a8" />
+                <stop offset="100%" stopColor="#6f6258" />
               </linearGradient>
             </defs>
+            <circle cx="27" cy="22" r="19" stroke="url(#navBubble)" strokeWidth="2.6" strokeDasharray="103 16" fill="none" />
+            <path d="M16 38 L13 46 L23 39" stroke="url(#navBubble)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            <g stroke="url(#navWave)" strokeWidth="2" strokeLinecap="round">
+              <line x1="10" y1="20" x2="10" y2="24" />
+              <line x1="13" y1="18" x2="13" y2="26" />
+              <line x1="16" y1="15" x2="16" y2="29" />
+              <line x1="19" y1="11" x2="19" y2="33" />
+              <line x1="22" y1="6" x2="22" y2="38" />
+              <line x1="25" y1="3" x2="25" y2="41" />
+              <line x1="28" y1="8" x2="28" y2="36" />
+              <line x1="31" y1="14" x2="31" y2="30" />
+              <line x1="34" y1="17" x2="34" y2="27" />
+              <line x1="37" y1="12" x2="37" y2="32" />
+              <line x1="40" y1="18" x2="40" y2="26" />
+              <line x1="43" y1="20" x2="43" y2="24" />
+            </g>
           </svg>
           <span>
             Reveal<em> AI</em>
@@ -162,10 +176,7 @@ export default function LandingPage() {
             </Link>
             <Link href={ctaHref} prefetch className="btn-store secondary">
               <svg viewBox="0 0 24 24" fill="currentColor">
-                <path
-                  d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 01-.61-.92V2.734a1 1 0 01.609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.807 1.626a1 1 0 010 1.732l-2.807 1.626L15.206 12l2.492-2.492zM5.864 2.658L16.8 8.991l-2.302 2.302-8.634-8.635z"
-                  fill="#fff"
-                />
+                <path d="M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 01-.61-.92V2.734a1 1 0 01.609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.807 1.626a1 1 0 010 1.732l-2.807 1.626L15.206 12l2.492-2.492zM5.864 2.658L16.8 8.991l-2.302 2.302-8.634-8.635z" />
               </svg>
               <div className="store-text">
                 <small>Coming soon to</small>
@@ -197,7 +208,9 @@ export default function LandingPage() {
           </div>
           <div className="problems-grid">
             <div className="problem-card reveal">
-              <div className="problem-icon">😔</div>
+              <div className="problem-icon">
+                <Icon name="flame" size={26} color="var(--blue)" />
+              </div>
               <h3>Burning Out in Silence</h3>
               <p>
                 You&apos;re exhausted. Energy dropping. But you don&apos;t realize it until it&apos;s
@@ -205,7 +218,9 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="problem-card reveal">
-              <div className="problem-icon">🎭</div>
+              <div className="problem-icon">
+                <Icon name="users" size={26} color="var(--blue)" />
+              </div>
               <h3>Reading People Wrong</h3>
               <p>
                 People around you mask their intentions. Are they genuine? Faking? Jealous? You
@@ -213,7 +228,9 @@ export default function LandingPage() {
               </p>
             </div>
             <div className="problem-card reveal">
-              <div className="problem-icon">🎤</div>
+              <div className="problem-icon">
+                <Icon name="mic" size={26} color="var(--blue)" />
+              </div>
               <h3>Not Sounding Like Yourself</h3>
               <p>
                 You know what to say, but your voice doesn&apos;t match. Your tone is weak. Your
@@ -310,13 +327,13 @@ export default function LandingPage() {
               <div
                 className="feature-mockup"
                 style={{
-                  background: 'linear-gradient(145deg, rgba(2,218,139,0.12), rgba(0,147,208,0.08))',
+                  background: 'linear-gradient(145deg, rgba(201,184,168,0.12), rgba(111,98,88,0.08))',
                 }}
               >
                 <div className="mockup-header">
                   <div
                     className="mockup-avatar"
-                    style={{ background: 'linear-gradient(135deg,#02da8b,#0093d0)' }}
+                    style={{ background: 'linear-gradient(135deg,#c9b8a8,#6f6258)' }}
                   >
                     <svg viewBox="0 0 24 24" fill="#fff" width="20" height="20">
                       <path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5s-3 1.34-3 3 1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z" />
@@ -339,7 +356,7 @@ export default function LandingPage() {
                   <div
                     style={{
                       padding: '14px 16px',
-                      background: 'rgba(2,218,139,0.08)',
+                      background: 'rgba(201,184,168,0.08)',
                       borderRadius: 12,
                       borderLeft: '3px solid var(--green)',
                     }}
@@ -355,10 +372,10 @@ export default function LandingPage() {
                     >
                       Speaker 1
                     </div>
-                    <div style={{ color: 'var(--white)', fontSize: '0.9rem', fontWeight: 600 }}>
+                    <div style={{ color: 'var(--dark)', fontSize: '0.9rem', fontWeight: 600 }}>
                       Genuine Interest
                     </div>
-                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>
+                    <div style={{ color: 'rgba(43,37,33,0.5)', fontSize: '0.8rem' }}>
                       Confidence 92%
                     </div>
                   </div>
@@ -381,10 +398,10 @@ export default function LandingPage() {
                     >
                       Speaker 2
                     </div>
-                    <div style={{ color: 'var(--white)', fontSize: '0.9rem', fontWeight: 600 }}>
+                    <div style={{ color: 'var(--dark)', fontSize: '0.9rem', fontWeight: 600 }}>
                       Guarded / Cautious
                     </div>
-                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.8rem' }}>
+                    <div style={{ color: 'rgba(43,37,33,0.5)', fontSize: '0.8rem' }}>
                       Confidence 78%
                     </div>
                   </div>
@@ -413,7 +430,7 @@ export default function LandingPage() {
               <div
                 className="feature-mockup"
                 style={{
-                  background: 'linear-gradient(145deg, rgba(0,147,208,0.15), rgba(2,218,139,0.05))',
+                  background: 'linear-gradient(145deg, rgba(111,98,88,0.15), rgba(201,184,168,0.05))',
                 }}
               >
                 <div className="mockup-header">
@@ -442,7 +459,7 @@ export default function LandingPage() {
                   <ToneRow label="Energy" value="Balanced" color="var(--blue)" width="68%" />
                   <ToneBar
                     width="68%"
-                    fill="linear-gradient(90deg,#0093d0,#02da8b)"
+                    fill="linear-gradient(90deg,#c9b8a8,#6f6258)"
                   />
                   <ToneRow label="Clarity" value="Excellent" color="var(--green)" width="91%" />
                   <ToneBar width="91%" />
@@ -452,7 +469,7 @@ export default function LandingPage() {
                     marginTop: 16,
                     textAlign: 'center',
                     padding: 12,
-                    background: 'rgba(2,218,139,0.08)',
+                    background: 'rgba(201,184,168,0.08)',
                     borderRadius: 12,
                   }}
                 >
@@ -528,21 +545,34 @@ export default function LandingPage() {
       <footer>
         <div className="footer-inner">
           <div className="footer-logo">
-            <svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path
-                d="M8 22 L14 22 L20 10 L26 30 L32 18 L36 18"
-                stroke="url(#footGrad)"
-                strokeWidth="3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                fill="none"
-              />
+            <svg viewBox="0 0 60 52" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
-                <linearGradient id="footGrad" x1="8" y1="20" x2="36" y2="20">
-                  <stop stopColor="#0093d0" />
-                  <stop offset="1" stopColor="#02da8b" />
+                <linearGradient id="footWave" x1="8" y1="0" x2="48" y2="0" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#2b2521" />
+                  <stop offset="55%" stopColor="#c9b8a8" />
+                  <stop offset="100%" stopColor="#6f6258" />
+                </linearGradient>
+                <linearGradient id="footBubble" x1="6" y1="4" x2="50" y2="42" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#c9b8a8" />
+                  <stop offset="100%" stopColor="#6f6258" />
                 </linearGradient>
               </defs>
+              <circle cx="27" cy="22" r="19" stroke="url(#footBubble)" strokeWidth="2.6" strokeDasharray="103 16" fill="none" />
+              <path d="M16 38 L13 46 L23 39" stroke="url(#footBubble)" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+              <g stroke="url(#footWave)" strokeWidth="2" strokeLinecap="round">
+                <line x1="10" y1="20" x2="10" y2="24" />
+                <line x1="13" y1="18" x2="13" y2="26" />
+                <line x1="16" y1="15" x2="16" y2="29" />
+                <line x1="19" y1="11" x2="19" y2="33" />
+                <line x1="22" y1="6" x2="22" y2="38" />
+                <line x1="25" y1="3" x2="25" y2="41" />
+                <line x1="28" y1="8" x2="28" y2="36" />
+                <line x1="31" y1="14" x2="31" y2="30" />
+                <line x1="34" y1="17" x2="34" y2="27" />
+                <line x1="37" y1="12" x2="37" y2="32" />
+                <line x1="40" y1="18" x2="40" y2="26" />
+                <line x1="43" y1="20" x2="43" y2="24" />
+              </g>
             </svg>
             <span>
               Reveal<em> AI</em>
@@ -579,7 +609,7 @@ function ToneRow({
 }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)' }}>{label}</span>
+      <span style={{ fontSize: '0.8rem', color: 'rgba(43,37,33,0.55)' }}>{label}</span>
       <span style={{ fontSize: '0.85rem', color, fontWeight: 600 }}>{value}</span>
     </div>
   );
@@ -590,7 +620,7 @@ function ToneBar({ width, fill }: { width: string; fill?: string }) {
     <div
       style={{
         height: 6,
-        background: 'rgba(255,255,255,0.08)',
+        background: 'rgba(111,98,88,0.15)',
         borderRadius: 6,
         overflow: 'hidden',
       }}

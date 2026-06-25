@@ -19,7 +19,9 @@ import {
 import { DAY_ABBR, fmtDate, todayPretty } from '@/lib/format';
 
 function modeColor(mode: string) {
-  return MODE_COLOR[mode] ?? COLORS.blue;
+  const c = MODE_COLOR[mode] ?? COLORS.blue;
+  // Home page keeps a green-free palette — fall back to the brand brown instead.
+  return c === COLORS.green ? COLORS.blue : c;
 }
 
 function HomeInner() {
@@ -84,11 +86,11 @@ function HomeInner() {
             style={{
               fontSize: 28,
               fontWeight: 800,
-              color: COLORS.white,
+              color: COLORS.textPrimary,
               lineHeight: 1.2,
             }}
           >
-            Welcome <span style={{ color: COLORS.green }}>{firstName}</span>
+            Welcome <span style={{ color: COLORS.blue }}>{firstName}</span>
           </div>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 6 }}>
             Here&apos;s how you&apos;ve been feeling lately.
@@ -106,15 +108,15 @@ function HomeInner() {
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            background: 'rgba(2,218,139,0.08)',
-            border: '1px solid rgba(2,218,139,0.2)',
+            background: 'rgba(201, 184, 168,0.08)',
+            border: '1px solid rgba(201, 184, 168,0.2)',
             borderRadius: 18,
             padding: '12px 16px',
             marginBottom: 16,
           }}
         >
           <span style={{ fontSize: 20 }}>🔥</span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.green }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.blue }}>
             {stats.streak}-day streak! Keep going.
           </span>
         </div>
@@ -199,13 +201,13 @@ function HomeInner() {
                   <Icon
                     name={trendUp ? 'trending-up' : 'trending-down'}
                     size={16}
-                    color={trendUp ? COLORS.green : COLORS.danger}
+                    color={trendUp ? COLORS.dark : COLORS.danger}
                   />
                   <span
                     style={{
                       fontSize: 14,
                       fontWeight: 700,
-                      color: trendUp ? COLORS.green : COLORS.danger,
+                      color: trendUp ? COLORS.dark : COLORS.danger,
                     }}
                   >
                     {trendUp ? '+' : ''}
@@ -216,7 +218,7 @@ function HomeInner() {
             }
           />
 
-          <MiniChart data={chartData} color={COLORS.green} height={90} labels={tooltipLabels} />
+          <MiniChart data={chartData} color={COLORS.dark} height={90} labels={tooltipLabels} />
           <DayLabels labels={dayLabels} />
 
           {stats && (
@@ -326,7 +328,7 @@ function HomeInner() {
                   justifyContent: 'space-between',
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
                   🧠 Last Session Insight
                 </div>
                 <div
@@ -371,11 +373,11 @@ function HomeInner() {
                   borderTop: `1px solid ${COLORS.cardBorder}`,
                 }}
               >
-                <Icon name="bulb" size={13} color={COLORS.green} />
+                <Icon name="bulb" size={13} color={COLORS.blue} />
                 <span
                   style={{
                     fontSize: 12,
-                    color: COLORS.green,
+                    color: COLORS.blue,
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
@@ -390,7 +392,7 @@ function HomeInner() {
       </Grid>
 
       {/* Module */}
-      <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.white, marginBottom: 14 }}>
+      <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 14 }}>
         Start Your Session
       </div>
       <button
@@ -423,7 +425,7 @@ function HomeInner() {
         </div>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>
+            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
               Reflect
             </span>
             <span
@@ -468,7 +470,7 @@ function ChartHeader({
       }}
     >
       <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.white }}>{title}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.textPrimary }}>{title}</div>
         <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>{subtitle}</div>
       </div>
       {badge}
@@ -499,7 +501,7 @@ function DayLabels({ labels }: { labels: string[] }) {
 function StatItem({ value, label }: { value: number; label: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <span style={{ fontSize: 20, fontWeight: 800, color: COLORS.white }}>{value}</span>
+      <span style={{ fontSize: 20, fontWeight: 800, color: COLORS.textPrimary }}>{value}</span>
       <span style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>{label}</span>
     </div>
   );

@@ -117,7 +117,7 @@ function TherapyInner() {
           }}
         >
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.white }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.textPrimary }}>
               Your check-in is in
             </div>
             <div style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 4 }}>
@@ -130,7 +130,7 @@ function TherapyInner() {
               padding: '10px 16px',
               borderRadius: 12,
               border: `1px solid ${COLORS.cardBorder}`,
-              color: COLORS.white,
+              color: COLORS.textPrimary,
               fontSize: 13,
               fontWeight: 700,
               background: COLORS.card,
@@ -143,7 +143,7 @@ function TherapyInner() {
         {(results.transcript || results.emotional_mirror) && (
           <div
             style={{
-              background: `linear-gradient(135deg, rgba(0,147,208,0.08), rgba(2,218,139,0.06))`,
+              background: `linear-gradient(135deg, rgba(111, 98, 88,0.08), rgba(201, 184, 168,0.06))`,
               border: `1px solid ${COLORS.cardBorder}`,
               borderRadius: 18,
               padding: 20,
@@ -188,7 +188,7 @@ function TherapyInner() {
                 <div
                   style={{
                     fontSize: 14,
-                    color: COLORS.white,
+                    color: COLORS.textPrimary,
                     lineHeight: 1.6,
                     fontStyle: 'italic',
                   }}
@@ -348,7 +348,7 @@ function TherapyInner() {
           <SecondaryButton
             title="View My Trends"
             onClick={() => router.push('/trends')}
-            icon={<Icon name="trending-up" size={18} color={COLORS.white} />}
+            icon={<Icon name="trending-up" size={18} color={COLORS.textPrimary} />}
           />
         </Grid>
       </AppShell>
@@ -370,7 +370,7 @@ function TherapyInner() {
           <div className="animate-pulse-soft">
             <Logo size={100} />
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.white, marginTop: 28 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary, marginTop: 28 }}>
             Analyzing your voice...
           </div>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
@@ -433,7 +433,7 @@ function TherapyInner() {
           />
         </button>
 
-        <div style={{ fontSize: 40, fontWeight: 800, color: COLORS.white, marginBottom: 4 }}>
+        <div style={{ fontSize: 40, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 4 }}>
           {Math.floor(seconds / 60)}:{(seconds % 60).toString().padStart(2, '0')}
           <span style={{ fontSize: 18, fontWeight: 400, color: COLORS.textMuted }}>
             {' / 1:00'}
@@ -467,7 +467,7 @@ function TherapyInner() {
 
 function CardTitle({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.white, marginBottom: 16 }}>
+    <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16 }}>
       {children}
     </div>
   );
@@ -491,7 +491,7 @@ function InlineRow({ label, value }: { label: string; value: string }) {
           borderRadius: 8,
           fontSize: 13,
           fontWeight: 700,
-          color: COLORS.white,
+          color: COLORS.textPrimary,
           textTransform: 'capitalize',
         }}
       >
@@ -540,7 +540,7 @@ function ComparisonCard({
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
             📊 Compared to Last Session
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{dateLabel}</div>
@@ -573,7 +573,7 @@ function DiffTile({ label, current, delta, goodWhen }: DiffMeta) {
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.02)',
+        background: 'rgba(111, 98, 88, 0.03)',
         border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 12,
         padding: '12px 14px',
@@ -581,7 +581,7 @@ function DiffTile({ label, current, delta, goodWhen }: DiffMeta) {
     >
       <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4 }}>{label}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <span style={{ fontSize: 22, fontWeight: 800, color: COLORS.white }}>{current}</span>
+        <span style={{ fontSize: 22, fontWeight: 800, color: COLORS.textPrimary }}>{current}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color }}>
           {arrow} {sign}
           {delta}

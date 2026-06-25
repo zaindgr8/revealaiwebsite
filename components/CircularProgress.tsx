@@ -65,7 +65,7 @@ export function CircularProgress({
           justifyContent: 'center',
         }}
       >
-        <span style={{ fontSize: size * 0.22, fontWeight: 800, color: COLORS.white }}>{value}</span>
+        <span style={{ fontSize: size * 0.22, fontWeight: 800, color: COLORS.textPrimary }}>{value}</span>
         {label && <span style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>{label}</span>}
         {sublabel && <span style={{ fontSize: 10, color: COLORS.textMuted }}>{sublabel}</span>}
       </div>

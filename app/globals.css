@@ -1,26 +1,26 @@
 @import "tailwindcss";
 
 :root {
-  --color-blue: #0093d0;
-  --color-green: #02da8b;
-  --color-dark: #424242;
+  --color-blue: #6f6258;
+  --color-green: #4f7a43;
+  --color-dark: #2b2521;
   --color-white: #ffffff;
 
-  --color-background: #0a0e1a;
-  --color-card: #131829;
-  --color-card-border: #1e2540;
-  --color-surface: #1a2035;
+  --color-background: #ffffff;
+  --color-card: #f7f2ed;
+  --color-card-border: #e6dbd1;
+  --color-surface: #f0e7de;
 
-  --color-text-primary: #ffffff;
-  --color-text-secondary: #8b95b0;
-  --color-text-muted: #555f7a;
+  --color-text-primary: #2b2521;
+  --color-text-secondary: #6f6258;
+  --color-text-muted: #a89a8d;
 
-  --color-danger: #ff4d6a;
-  --color-warning: #ffb84d;
-  --color-success: #02da8b;
+  --color-danger: #c0392b;
+  --color-warning: #b07d2e;
+  --color-success: #4f7a43;
 
-  --color-gradient-start: #0093d0;
-  --color-gradient-end: #02da8b;
+  --color-gradient-start: #c9b8a8;
+  --color-gradient-end: #6f6258;
 }
 
 @theme inline {
@@ -45,8 +45,8 @@ html, body {
   padding: 0;
   background: var(--color-background);
   color: var(--color-text-primary);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
-    Arial, sans-serif;
+  font-family: var(--font-jakarta), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -162,7 +162,7 @@ input:focus, textarea:focus, button:focus {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: rgba(10, 14, 26, 0.85);
+  background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--color-card-border);
@@ -212,9 +212,9 @@ input:focus, textarea:focus, button:focus {
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(0, 147, 208, 0.18), rgba(2, 218, 139, 0.12));
+  background: linear-gradient(135deg, rgba(201, 184, 168, 0.18), rgba(111, 98, 88, 0.18));
   color: var(--color-text-primary);
-  border: 1px solid rgba(0, 147, 208, 0.35);
+  border: 1px solid rgba(201, 184, 168, 0.35);
 }
 
 /* Responsive grid helpers */

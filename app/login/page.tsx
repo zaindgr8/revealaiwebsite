@@ -40,7 +40,7 @@ export default function LoginPage() {
     <AuthShell>
       <AuthMobileLogo />
 
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: COLORS.white, marginBottom: 6 }}>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 6 }}>
         Welcome back
       </h1>
       <p style={{ fontSize: 14, color: COLORS.textSecondary, marginBottom: 28 }}>
@@ -116,6 +116,6 @@ const inputStyle: React.CSSProperties = {
   border: `1px solid ${COLORS.cardBorder}`,
   borderRadius: 14,
   padding: '14px 16px',
-  color: COLORS.white,
+  color: COLORS.textPrimary,
   fontSize: 15,
 };

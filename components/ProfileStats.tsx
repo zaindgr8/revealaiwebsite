@@ -46,7 +46,7 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
             📈 Profile Stats
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
@@ -75,7 +75,7 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
                   padding: '7px 14px',
                   borderRadius: 9,
                   background: active ? COLORS.card : 'transparent',
-                  color: active ? COLORS.white : COLORS.textSecondary,
+                  color: active ? COLORS.textPrimary : COLORS.textSecondary,
                   fontSize: 12,
                   fontWeight: 700,
                   border: active ? `1px solid ${COLORS.cardBorder}` : '1px solid transparent',
@@ -117,7 +117,7 @@ function MetricTile({ metric }: { metric: MetricSummary }) {
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.02)',
+        background: 'rgba(111, 98, 88, 0.03)',
         border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 14,
         padding: 14,
@@ -125,7 +125,7 @@ function MetricTile({ metric }: { metric: MetricSummary }) {
     >
       <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6 }}>{metric.label}</div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, color: COLORS.white }}>{metric.current}</span>
+        <span style={{ fontSize: 26, fontWeight: 800, color: COLORS.textPrimary }}>{metric.current}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color }}>
           {arrow} {isUp ? '+' : ''}
           {metric.diffPct}%
@@ -152,8 +152,8 @@ export function ProfileStatsExplainer() {
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
-        background: 'rgba(0,147,208,0.05)',
-        border: '1px solid rgba(0,147,208,0.18)',
+        background: 'rgba(111, 98, 88,0.05)',
+        border: '1px solid rgba(111, 98, 88,0.18)',
         borderRadius: 12,
         padding: '10px 14px',
         marginTop: 12,
@@ -161,7 +161,7 @@ export function ProfileStatsExplainer() {
     >
       <Icon name="bulb" size={14} color={COLORS.blue} style={{ marginTop: 3, flexShrink: 0 }} />
       <div style={{ fontSize: 12, color: COLORS.textSecondary, lineHeight: 1.55 }}>
-        <strong style={{ color: COLORS.white }}>How comparisons work:</strong> your &ldquo;baseline&rdquo;
+        <strong style={{ color: COLORS.textPrimary }}>How comparisons work:</strong> your &ldquo;baseline&rdquo;
         is your average across all check-ins outside the current window. The arrow shows whether
         today is above or below that baseline — green when it&apos;s healthier, red when it&apos;s
         worse. Less stress = better, so a red ▼ on stress means improvement.

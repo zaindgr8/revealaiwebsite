@@ -224,7 +224,7 @@ function SettingsInner() {
                 style={{
                   fontSize: 15,
                   fontWeight: 700,
-                  color: COLORS.white,
+                  color: COLORS.textPrimary,
                   background: 'transparent',
                   border: 'none',
                   borderBottom: `1.5px solid ${COLORS.blue}`,
@@ -520,7 +520,7 @@ function ButtonRow({
         style={{ marginRight: 12 }}
       />
       <div style={{ flex: 1 }}>
-        <div style={{ ...rowLabelStyle, color: danger ? COLORS.danger : COLORS.white }}>
+        <div style={{ ...rowLabelStyle, color: danger ? COLORS.danger : COLORS.textPrimary }}>
           {label}
         </div>
         <div style={rowSubStyle}>{sub}</div>
@@ -586,12 +586,12 @@ const avatarFallbackStyle: React.CSSProperties = {
 const fieldValueStyle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
-  color: COLORS.white,
+  color: COLORS.textPrimary,
 };
 
 const rowLabelStyle: React.CSSProperties = {
   fontSize: 14,
-  color: COLORS.white,
+  color: COLORS.textPrimary,
   fontWeight: 600,
 };
 

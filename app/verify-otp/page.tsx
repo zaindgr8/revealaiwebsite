@@ -85,7 +85,7 @@ function VerifyOtpInner() {
 
       <AuthMobileLogo />
 
-      <h1 style={{ fontSize: 28, fontWeight: 800, color: COLORS.white, marginBottom: 6 }}>
+      <h1 style={{ fontSize: 28, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 6 }}>
         Verify your email
       </h1>
       <p
@@ -98,7 +98,7 @@ function VerifyOtpInner() {
       >
         We sent a 6-digit code to
         <br />
-        <span style={{ color: COLORS.white, fontWeight: 700 }}>{email}</span>
+        <span style={{ color: COLORS.textPrimary, fontWeight: 700 }}>{email}</span>
       </p>
 
       <form onSubmit={onVerify}>
@@ -115,7 +115,7 @@ function VerifyOtpInner() {
             border: `1px solid ${COLORS.cardBorder}`,
             borderRadius: 14,
             padding: '18px 0',
-            color: COLORS.white,
+            color: COLORS.textPrimary,
             fontSize: 28,
             fontWeight: 800,
             letterSpacing: 12,

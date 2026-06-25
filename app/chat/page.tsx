@@ -219,7 +219,7 @@ function ChatInner() {
               borderRadius: 22,
               padding: '12px 18px',
               fontSize: 14,
-              color: COLORS.white,
+              color: COLORS.textPrimary,
               maxHeight: 120,
               resize: 'none',
             }}

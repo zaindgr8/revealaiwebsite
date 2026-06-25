@@ -61,7 +61,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
             flexDirection: 'column',
             justifyContent: 'space-between',
             borderRight: `1px solid ${COLORS.cardBorder}`,
-            background: 'rgba(19, 24, 41, 0.4)',
+            background: COLORS.surface,
           }}
         >
           <button
@@ -77,7 +77,7 @@ export function AuthShell({ children }: { children: React.ReactNode }) {
               style={{
                 fontSize: 36,
                 fontWeight: 800,
-                color: COLORS.white,
+                color: COLORS.textPrimary,
                 lineHeight: 1.15,
                 marginBottom: 18,
               }}

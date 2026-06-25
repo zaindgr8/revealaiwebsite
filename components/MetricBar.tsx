@@ -22,7 +22,7 @@ export function MetricBar({ label, value, max = 100, color = COLORS.green }: Pro
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
         <span style={{ fontSize: 13, color: COLORS.textSecondary }}>{label}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.white }}>{value}%</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary }}>{value}%</span>
       </div>
       <div
         style={{

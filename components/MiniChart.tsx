@@ -95,7 +95,7 @@ export function MiniChart({ data, color = COLORS.green, height = 70, labels }: P
             pointerEvents: 'none',
           }}
         >
-          <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.white }}>{sel.v}</div>
+          <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary }}>{sel.v}</div>
           <div style={{ fontSize: 10, color: COLORS.textSecondary, marginTop: 1 }}>
             {labels[selected!]}
           </div>

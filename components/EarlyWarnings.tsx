@@ -41,7 +41,7 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.white }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
             🛡️ Early Warning Alerts
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
@@ -73,8 +73,8 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
       {warnings.length === 0 && (
         <div
           style={{
-            background: 'rgba(2,218,139,0.06)',
-            border: `1px solid rgba(2,218,139,0.18)`,
+            background: 'rgba(201, 184, 168,0.06)',
+            border: `1px solid rgba(201, 184, 168,0.18)`,
             borderRadius: 12,
             padding: 14,
             display: 'flex',
@@ -127,13 +127,13 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
               <div
                 key={rule.title}
                 style={{
-                  background: 'rgba(255,255,255,0.02)',
+                  background: 'rgba(111, 98, 88, 0.03)',
                   border: `1px solid ${COLORS.cardBorder}`,
                   borderRadius: 10,
                   padding: 12,
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.white, marginBottom: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 6 }}>
                   {rule.title}
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.textSecondary, lineHeight: 1.55, marginBottom: 6 }}>
@@ -175,7 +175,7 @@ function WarningRow({
   return (
     <div
       style={{
-        background: 'rgba(255,255,255,0.02)',
+        background: 'rgba(111, 98, 88, 0.03)',
         border: `1px solid ${color}33`,
         borderLeft: `3px solid ${color}`,
         borderRadius: 12,
@@ -210,7 +210,7 @@ function WarningRow({
           >
             {SEVERITY_LABEL[warning.severity]}
           </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.white, marginBottom: 4 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 4 }}>
             {warning.title}
           </div>
           <div style={{ fontSize: 12, color: COLORS.textSecondary, lineHeight: 1.55 }}>
