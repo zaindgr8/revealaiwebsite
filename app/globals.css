@@ -1,26 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --color-blue: #6f6258;
-  --color-green: #4f7a43;
-  --color-dark: #2b2521;
+  --color-blue: #2563eb;
+  --color-sky: #0ea5e9;
+  --color-green: #0ea5e9;
+  --color-dark: #111118;
   --color-white: #ffffff;
 
-  --color-background: #ffffff;
-  --color-card: #f7f2ed;
-  --color-card-border: #e6dbd1;
-  --color-surface: #f0e7de;
+  --color-background: #f7f7f9;
+  --color-card: #ffffff;
+  --color-card-border: #e8e8ef;
+  --color-surface: #f7f7f9;
 
-  --color-text-primary: #2b2521;
-  --color-text-secondary: #6f6258;
-  --color-text-muted: #a89a8d;
+  --color-text-primary: #111118;
+  --color-text-secondary: #54545f;
+  --color-text-muted: #8a8a9a;
 
-  --color-danger: #c0392b;
-  --color-warning: #b07d2e;
-  --color-success: #4f7a43;
+  --color-danger: #ef4444;
+  --color-warning: #d97706;
+  --color-success: #16a34a;
 
-  --color-gradient-start: #c9b8a8;
-  --color-gradient-end: #6f6258;
+  --color-gradient-start: #2563eb;
+  --color-gradient-end: #0ea5e9;
 }
 
 @theme inline {
@@ -93,6 +94,26 @@ input:focus, textarea:focus, button:focus {
 @keyframes pulse-soft {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.08); opacity: 0.85; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+
+.recording-ring {
+  position: absolute;
+  inset: -12px;
+  border-radius: 50%;
+  border: 2px solid #ef4444;
+  animation: pulse-ring 1.4s ease-out infinite;
+}
+.recording-ring-2 {
+  position: absolute;
+  inset: -24px;
+  border-radius: 50%;
+  border: 1.5px solid #ef4444;
+  animation: pulse-ring 1.4s ease-out 0.4s infinite;
 }
 
 @keyframes wave {
@@ -212,9 +233,9 @@ input:focus, textarea:focus, button:focus {
 }
 
 .nav-item.active {
-  background: linear-gradient(135deg, rgba(201, 184, 168, 0.18), rgba(111, 98, 88, 0.18));
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.12));
   color: var(--color-text-primary);
-  border: 1px solid rgba(201, 184, 168, 0.35);
+  border: 1px solid rgba(37, 99, 235, 0.25);
 }
 
 /* Responsive grid helpers */

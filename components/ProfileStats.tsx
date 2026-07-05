@@ -46,8 +46,9 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
-            📈 Profile Stats
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
+            <Icon name="trending-up" size={15} color={COLORS.blue} />
+            Profile Stats
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
             {aggregates.totalSessionsInPeriod} session
@@ -107,7 +108,7 @@ function MetricTile({ metric }: { metric: MetricSummary }) {
   const isFlat = metric.diff === 0;
   const isUp = metric.diff > 0;
   const isGood = isFlat ? null : (isUp && metric.goodWhen === 'up') || (!isUp && metric.goodWhen === 'down');
-  const color = isFlat ? COLORS.textMuted : isGood ? COLORS.green : COLORS.danger;
+  const color = isFlat ? COLORS.textMuted : isGood ? COLORS.success : COLORS.danger;
   const arrow = isFlat ? '–' : isUp ? '▲' : '▼';
 
   const directionLabel = isFlat
@@ -117,7 +118,7 @@ function MetricTile({ metric }: { metric: MetricSummary }) {
   return (
     <div
       style={{
-        background: 'rgba(111, 98, 88, 0.03)',
+        background: 'rgba(17, 17, 24, 0.025)',
         border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 14,
         padding: 14,
@@ -152,8 +153,8 @@ export function ProfileStatsExplainer() {
         display: 'flex',
         alignItems: 'flex-start',
         gap: 10,
-        background: 'rgba(111, 98, 88,0.05)',
-        border: '1px solid rgba(111, 98, 88,0.18)',
+        background: 'rgba(37, 99, 235, 0.05)',
+        border: '1px solid rgba(37, 99, 235, 0.18)',
         borderRadius: 12,
         padding: '10px 14px',
         marginTop: 12,

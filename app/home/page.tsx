@@ -20,7 +20,6 @@ import { DAY_ABBR, fmtDate, todayPretty } from '@/lib/format';
 
 function modeColor(mode: string) {
   const c = MODE_COLOR[mode] ?? COLORS.blue;
-  // Home page keeps a green-free palette — fall back to the brand brown instead.
   return c === COLORS.green ? COLORS.blue : c;
 }
 
@@ -70,72 +69,71 @@ function HomeInner() {
 
   return (
     <AppShell title="Dashboard" subtitle={dateString}>
-      {/* Welcome hero */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'flex-end',
-          marginBottom: 20,
-          gap: 16,
-          flexWrap: 'wrap',
-        }}
-      >
-        <div>
-          <div
-            style={{
-              fontSize: 28,
-              fontWeight: 800,
-              color: COLORS.textPrimary,
-              lineHeight: 1.2,
-            }}
-          >
-            Welcome <span style={{ color: COLORS.blue }}>{firstName}</span>
-          </div>
-          <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 6 }}>
-            Here&apos;s how you&apos;ve been feeling lately.
-          </div>
+      {/* ── Welcome row ── */}
+      <div style={{ marginBottom: 20 }}>
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 800,
+            color: COLORS.textPrimary,
+            lineHeight: 1.2,
+            fontFamily: 'var(--font-syne)',
+            letterSpacing: '-0.7px',
+          }}
+        >
+          Welcome back, <span style={{ color: COLORS.blue }}>{firstName}</span>
+        </div>
+        <div style={{ fontSize: 13.5, color: COLORS.textSecondary, marginTop: 5 }}>
+          Here&apos;s how you&apos;ve been feeling lately.
         </div>
       </div>
 
-      {/* Burnout Alert */}
-      {sessions.length >= 3 && <EarlyWarnings sessions={sessions} />}
+      {/* ── Burnout alerts ── */}
+      {sessions.length >= 3 && (
+        <div style={{ marginBottom: 16 }}>
+          <EarlyWarnings sessions={sessions} />
+        </div>
+      )}
 
-      {/* Streak Banner */}
+      {/* ── Streak banner ── */}
       {stats && stats.streak > 1 && (
         <div
           style={{
             display: 'flex',
             alignItems: 'center',
             gap: 10,
-            background: 'rgba(201, 184, 168,0.08)',
-            border: '1px solid rgba(201, 184, 168,0.2)',
-            borderRadius: 18,
-            padding: '12px 16px',
+            background: 'rgba(37,99,235,0.05)',
+            border: '1px solid rgba(37,99,235,0.15)',
+            borderRadius: 14,
+            padding: '11px 16px',
             marginBottom: 16,
           }}
         >
-          <span style={{ fontSize: 20 }}>🔥</span>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(37,99,235,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="flame" size={15} color={COLORS.blue} />
+          </div>
           <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.blue }}>
-            {stats.streak}-day streak! Keep going.
+            {stats.streak}-day streak — keep showing up.
           </span>
         </div>
       )}
 
-      {/* CTA */}
+      {/* ── Primary CTA ── */}
       <button
         onClick={() => router.push('/therapy')}
         style={{
           width: '100%',
           textAlign: 'left',
-          borderRadius: 22,
-          padding: 28,
+          borderRadius: 20,
+          padding: '22px 24px',
           marginBottom: 20,
           background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
           position: 'relative',
           overflow: 'hidden',
         }}
       >
+        {/* decorative blur orb */}
+        <div style={{ position: 'absolute', right: -20, top: -20, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
         <div
           style={{
             display: 'flex',
@@ -143,36 +141,42 @@ function HomeInner() {
             justifyContent: 'space-between',
             gap: 16,
             flexWrap: 'wrap',
+            position: 'relative',
+            zIndex: 1,
           }}
         >
-          <div style={{ flex: 1, minWidth: 240 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-              <Icon name="mic" size={28} color={COLORS.white} />
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Icon name="mic" size={20} color={COLORS.white} />
+              </div>
               <div
                 style={{
-                  background: 'rgba(255,255,255,0.2)',
-                  padding: '4px 10px',
+                  background: 'rgba(255,255,255,0.18)',
+                  padding: '3px 10px',
                   borderRadius: 20,
-                  fontSize: 11,
-                  fontWeight: 600,
+                  fontSize: 10,
+                  fontWeight: 700,
                   color: COLORS.white,
+                  letterSpacing: '0.06em',
                 }}
               >
-                {stats?.doneToday ? '✓ DONE TODAY' : 'DAILY'}
+                {stats?.doneToday ? '✓ DONE TODAY' : 'DAILY CHECK-IN'}
               </div>
             </div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.white, marginBottom: 6 }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.white, marginBottom: 4, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
               {stats?.doneToday ? 'Check-In Complete' : 'Morning Check-In'}
             </div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.85)' }}>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)' }}>
               {stats?.doneToday
-                ? `Mood score: ${stats.latestMood} · Feeling ${stats.latestMode}`
-                : 'Record 60 seconds to analyze your mood & energy'}
+                ? `Mood ${stats.latestMood} · Feeling ${stats.latestMode}`
+                : 'Record 60 seconds — we decode your mood & energy'}
             </div>
           </div>
           <div
             style={{
-              background: 'rgba(255,255,255,0.18)',
+              background: 'rgba(255,255,255,0.15)',
+              border: '1px solid rgba(255,255,255,0.25)',
               color: COLORS.white,
               padding: '10px 18px',
               borderRadius: 12,
@@ -180,18 +184,19 @@ function HomeInner() {
               fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
+              gap: 7,
+              flexShrink: 0,
             }}
           >
-            Start
-            <Icon name="arrow-forward" size={16} color={COLORS.white} />
+            {stats?.doneToday ? 'View Results' : 'Start'}
+            <Icon name="arrow-forward" size={15} color={COLORS.white} />
           </div>
         </div>
       </button>
 
-      {/* Charts grid */}
-      <Grid cols={2} style={{ marginBottom: 16 }}>
-        <Card>
+      {/* ── Charts grid ── */}
+      <Grid cols={2} gap={14}>
+        <Card style={{ marginBottom: 0 }}>
           <ChartHeader
             title="Mood Trend"
             subtitle={stats ? `Last ${stats.last7MoodScores.length} check-ins` : 'Last 7 days'}
@@ -200,14 +205,14 @@ function HomeInner() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   <Icon
                     name={trendUp ? 'trending-up' : 'trending-down'}
-                    size={16}
-                    color={trendUp ? COLORS.dark : COLORS.danger}
+                    size={15}
+                    color={trendUp ? COLORS.blue : COLORS.danger}
                   />
                   <span
                     style={{
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight: 700,
-                      color: trendUp ? COLORS.dark : COLORS.danger,
+                      color: trendUp ? COLORS.blue : COLORS.danger,
                     }}
                   >
                     {trendUp ? '+' : ''}
@@ -218,7 +223,7 @@ function HomeInner() {
             }
           />
 
-          <MiniChart data={chartData} color={COLORS.dark} height={90} labels={tooltipLabels} />
+          <MiniChart data={chartData} color={COLORS.blue} height={88} labels={tooltipLabels} />
           <DayLabels labels={dayLabels} />
 
           {stats && (
@@ -226,7 +231,7 @@ function HomeInner() {
               style={{
                 display: 'flex',
                 justifyContent: 'space-around',
-                marginTop: 16,
+                marginTop: 14,
                 paddingTop: 14,
                 borderTop: `1px solid ${COLORS.cardBorder}`,
               }}
@@ -276,13 +281,13 @@ function HomeInner() {
           )}
         </Card>
 
-        {stats && (
-          <Card>
+        {stats ? (
+          <Card style={{ marginBottom: 0 }}>
             <ChartHeader
-              title="⚡ Energy Level"
+              title="Energy Level"
               subtitle={`Last ${stats.last7EnergyScores.length} check-ins`}
               badge={
-                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.blue }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.blue, fontFamily: 'var(--font-syne)' }}>
                   {stats.last7EnergyScores[stats.last7EnergyScores.length - 1]}
                 </span>
               }
@@ -290,20 +295,20 @@ function HomeInner() {
             <MiniChart
               data={stats.last7EnergyScores}
               color={COLORS.blue}
-              height={90}
+              height={88}
               labels={tooltipLabels}
             />
             <DayLabels labels={dayLabels} />
           </Card>
-        )}
+        ) : <div />}
 
-        {stats && (
-          <Card>
+        {stats ? (
+          <Card style={{ marginBottom: 0 }}>
             <ChartHeader
-              title="🌀 Stress Level"
+              title="Stress Level"
               subtitle={`Last ${stats.last7StressScores.length} check-ins`}
               badge={
-                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.danger }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.danger, fontFamily: 'var(--font-syne)' }}>
                   {stats.last7StressScores[stats.last7StressScores.length - 1]}
                 </span>
               }
@@ -311,16 +316,16 @@ function HomeInner() {
             <MiniChart
               data={stats.last7StressScores}
               color={COLORS.danger}
-              height={90}
+              height={88}
               labels={tooltipLabels}
             />
             <DayLabels labels={dayLabels} />
           </Card>
-        )}
+        ) : <div />}
 
-        {lastSession?.insight && (
-          <Card>
-            <div style={{ marginBottom: 10 }}>
+        {lastSession?.insight ? (
+          <Card style={{ marginBottom: 0 }}>
+            <div style={{ marginBottom: 12 }}>
               <div
                 style={{
                   display: 'flex',
@@ -328,14 +333,15 @@ function HomeInner() {
                   justifyContent: 'space-between',
                 }}
               >
-                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
-                  🧠 Last Session Insight
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
+                  <Icon name="bulb" size={15} color={COLORS.blue} />
+                  Last Session Insight
                 </div>
                 <div
                   style={{
                     background: modeColor(lastSession.detected_mode) + '22',
-                    padding: '3px 8px',
-                    borderRadius: 6,
+                    padding: '3px 9px',
+                    borderRadius: 7,
                     fontSize: 11,
                     fontWeight: 700,
                     color: modeColor(lastSession.detected_mode),
@@ -353,7 +359,7 @@ function HomeInner() {
               style={{
                 fontSize: 13,
                 color: COLORS.textSecondary,
-                lineHeight: 1.6,
+                lineHeight: 1.65,
                 display: '-webkit-box',
                 WebkitLineClamp: 4,
                 WebkitBoxOrient: 'vertical',
@@ -368,8 +374,8 @@ function HomeInner() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  marginTop: 10,
-                  paddingTop: 10,
+                  marginTop: 12,
+                  paddingTop: 12,
                   borderTop: `1px solid ${COLORS.cardBorder}`,
                 }}
               >
@@ -381,6 +387,7 @@ function HomeInner() {
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     whiteSpace: 'nowrap',
+                    fontWeight: 600,
                   }}
                 >
                   {lastSession.tips[0]}
@@ -388,65 +395,8 @@ function HomeInner() {
               </div>
             )}
           </Card>
-        )}
+        ) : <div />}
       </Grid>
-
-      {/* Module */}
-      <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 14 }}>
-        Start Your Session
-      </div>
-      <button
-        onClick={() => router.push('/therapy')}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 14,
-          width: '100%',
-          textAlign: 'left',
-          background: COLORS.card,
-          borderRadius: 18,
-          padding: 18,
-          border: `1px solid ${COLORS.cardBorder}`,
-        }}
-      >
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: 16,
-            background: COLORS.blue + '18',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="pulse" size={24} color={COLORS.blue} />
-        </div>
-        <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-            <span style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
-              Reflect
-            </span>
-            <span
-              style={{
-                background: COLORS.blue + '20',
-                color: COLORS.blue,
-                padding: '2px 7px',
-                borderRadius: 6,
-                fontSize: 9,
-                fontWeight: 700,
-              }}
-            >
-              SELF
-            </span>
-          </div>
-          <div style={{ fontSize: 12, color: COLORS.textSecondary }}>
-            Daily emotional check-in & burnout detection
-          </div>
-        </div>
-        <Icon name="chevron-forward" size={18} color={COLORS.textMuted} />
-      </button>
     </AppShell>
   );
 }
@@ -465,13 +415,14 @@ function ChartHeader({
       style={{
         display: 'flex',
         justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
+        alignItems: 'flex-start',
+        marginBottom: 14,
+        gap: 8,
       }}
     >
       <div>
-        <div style={{ fontSize: 16, fontWeight: 700, color: COLORS.textPrimary }}>{title}</div>
-        <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>{subtitle}</div>
+        <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>{title}</div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{subtitle}</div>
       </div>
       {badge}
     </div>
@@ -484,9 +435,9 @@ function DayLabels({ labels }: { labels: string[] }) {
       style={{
         display: 'flex',
         justifyContent: 'space-between',
-        marginTop: 8,
-        paddingLeft: 4,
-        paddingRight: 4,
+        marginTop: 6,
+        paddingLeft: 2,
+        paddingRight: 2,
       }}
     >
       {labels.map((d, i) => (
@@ -501,8 +452,8 @@ function DayLabels({ labels }: { labels: string[] }) {
 function StatItem({ value, label }: { value: number; label: string }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <span style={{ fontSize: 20, fontWeight: 800, color: COLORS.textPrimary }}>{value}</span>
-      <span style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>{label}</span>
+      <span style={{ fontSize: 20, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>{value}</span>
+      <span style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
     </div>
   );
 }

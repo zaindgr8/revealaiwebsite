@@ -113,15 +113,18 @@ function ChatInner() {
       >
         <div
           style={{
-            padding: '14px 24px',
+            padding: '12px 24px',
             borderBottom: `1px solid ${COLORS.cardBorder}`,
-            fontSize: 12,
-            color: COLORS.textSecondary,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
           }}
         >
-          Mood <span style={{ color: COLORS.green }}>{results.mood_score}</span>
-          {'  ·  '}
-          <span style={{ color: modeColor, textTransform: 'capitalize' }}>
+          <div style={{ width: 8, height: 8, borderRadius: 4, background: COLORS.blue, boxShadow: `0 0 6px ${COLORS.blue}` }} />
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>Mood</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.blue, fontFamily: 'var(--font-syne)' }}>{results.mood_score}</span>
+          <span style={{ fontSize: 12, color: COLORS.cardBorder }}>·</span>
+          <span style={{ fontSize: 12, color: modeColor, textTransform: 'capitalize', fontWeight: 600 }}>
             {results.detected_mode}
           </span>
         </div>
@@ -195,7 +198,7 @@ function ChatInner() {
             display: 'flex',
             alignItems: 'flex-end',
             gap: 10,
-            padding: '14px 24px',
+            padding: '12px 20px',
             borderTop: `1px solid ${COLORS.cardBorder}`,
             background: COLORS.background,
           }}
@@ -209,39 +212,42 @@ function ChatInner() {
                 send();
               }
             }}
-            placeholder="Share what's on your mind..."
+            placeholder="Share what's on your mind…"
             rows={1}
             maxLength={500}
             style={{
               flex: 1,
               background: COLORS.card,
-              border: `1px solid ${COLORS.cardBorder}`,
-              borderRadius: 22,
-              padding: '12px 18px',
+              border: `1.5px solid ${COLORS.cardBorder}`,
+              borderRadius: 18,
+              padding: '11px 18px',
               fontSize: 14,
               color: COLORS.textPrimary,
               maxHeight: 120,
               resize: 'none',
+              transition: 'border-color 0.2s',
+              lineHeight: 1.5,
             }}
           />
           <button
             onClick={send}
             disabled={!input.trim() || loading}
             style={{
-              width: 46,
-              height: 46,
-              borderRadius: 23,
-              background: COLORS.blue,
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              opacity: !input.trim() || loading ? 0.4 : 1,
+              opacity: !input.trim() || loading ? 0.35 : 1,
               cursor: !input.trim() || loading ? 'not-allowed' : 'pointer',
               flexShrink: 0,
+              transition: 'opacity 0.2s',
             }}
             aria-label="Send"
           >
-            <Icon name="send" size={20} color={COLORS.white} />
+            <Icon name="send" size={18} color={COLORS.white} />
           </button>
         </div>
       </div>

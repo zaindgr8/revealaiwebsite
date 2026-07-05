@@ -151,8 +151,8 @@ function SettingsInner() {
 
   return (
     <AppShell title="Profile & Settings" subtitle="Manage your account and preferences">
-      <Grid cols={2}>
-        <Card>
+      <Grid cols={2} gap={14}>
+        <Card style={{ marginBottom: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
             <button
               onClick={onPickAvatar}
@@ -294,7 +294,7 @@ function SettingsInner() {
           </Field>
         </Card>
 
-        <Card>
+        <Card style={{ marginBottom: 0 }}>
           <SectionTitle>Notifications</SectionTitle>
           {[
             {
@@ -338,7 +338,7 @@ function SettingsInner() {
         </Card>
       </Grid>
 
-      <Card>
+      <Card style={{ marginTop: 14 }}>
         <SectionTitle>Privacy & Data</SectionTitle>
 
         <Row
@@ -349,10 +349,10 @@ function SettingsInner() {
         >
           <span
             style={{
-              background: COLORS.green + '20',
-              color: COLORS.green,
-              padding: '3px 8px',
-              borderRadius: 6,
+              background: 'rgba(22,163,74,0.1)',
+              color: COLORS.success,
+              padding: '3px 9px',
+              borderRadius: 7,
               fontSize: 11,
               fontWeight: 700,
             }}
@@ -384,35 +384,44 @@ function SettingsInner() {
         />
       </Card>
 
-      <Grid cols={2}>
-        <Card style={{ alignItems: 'center', display: 'flex', flexDirection: 'column' }}>
-          <Logo size={44} />
-          <div style={{ height: 8 }} />
-          <LogoText size={18} />
-          <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>Version 1.0.0</div>
-        </Card>
-
+      {/* Footer strip: logo + sign-out */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginTop: 14,
+          padding: '18px 22px',
+          background: COLORS.card,
+          border: `1px solid ${COLORS.cardBorder}`,
+          borderRadius: 20,
+          gap: 16,
+          flexWrap: 'wrap',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <Logo size={22} />
+          <div style={{ fontSize: 11, color: COLORS.textMuted }}>Version 1.0.0</div>
+        </div>
         <button
           onClick={onSignOut}
           style={{
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
             gap: 8,
-            width: '100%',
-            padding: 22,
-            borderRadius: 18,
-            border: `1px solid ${COLORS.danger}55`,
-            background: COLORS.card,
+            padding: '10px 18px',
+            borderRadius: 12,
+            border: `1px solid ${COLORS.danger}44`,
+            background: 'transparent',
             color: COLORS.danger,
             fontSize: 14,
             fontWeight: 700,
           }}
         >
-          <Icon name="log-out" size={18} color={COLORS.danger} />
+          <Icon name="log-out" size={16} color={COLORS.danger} />
           Sign Out
         </button>
-      </Grid>
+      </div>
     </AppShell>
   );
 }

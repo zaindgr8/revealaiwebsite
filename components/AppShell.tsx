@@ -91,9 +91,11 @@ export function AppShell({
           zIndex: 40,
           transform: showSidebar ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.25s ease',
-          boxShadow: isMobile && sidebarOpen ? '0 0 30px rgba(0,0,0,0.5)' : 'none',
+          boxShadow: isMobile && sidebarOpen ? '0 0 30px rgba(0,0,0,0.12)' : 'none',
         }}
       >
+        {/* Top gradient accent */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,#2563eb,#0ea5e9)', borderRadius: '0 0 0 0' }} />
         <Link
           href="/home"
           prefetch
@@ -101,15 +103,13 @@ export function AppShell({
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
             padding: '4px 8px 18px',
             marginBottom: 8,
             borderBottom: `1px solid ${COLORS.cardBorder}`,
             textDecoration: 'none',
           }}
         >
-          <Logo size={32} />
-          <LogoText size={18} />
+          <Logo size={24} />
         </Link>
 
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
@@ -131,76 +131,83 @@ export function AppShell({
         <div
           style={{
             borderTop: `1px solid ${COLORS.cardBorder}`,
-            paddingTop: 14,
-            marginTop: 14,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
+            paddingTop: 12,
+            marginTop: 12,
           }}
         >
-          {profile?.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={profile.avatar_url}
-              alt="avatar"
-              style={{ width: 36, height: 36, borderRadius: 18, objectFit: 'cover' }}
-            />
-          ) : (
-            <div
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {profile?.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.avatar_url}
+                alt="avatar"
+                style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'cover', border: `1px solid ${COLORS.cardBorder}` }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: COLORS.white,
+                  flexShrink: 0,
+                  fontFamily: 'var(--font-syne)',
+                }}
+              >
+                {initials}
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: COLORS.textPrimary,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'var(--font-syne)',
+                }}
+              >
+                {displayName}
+              </div>
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: COLORS.textMuted,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  marginTop: 1,
+                }}
+              >
+                {user?.email}
+              </div>
+            </div>
+            <button
+              onClick={handleSignOut}
+              title="Sign out"
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                width: 30,
+                height: 30,
+                borderRadius: 8,
+                background: COLORS.surface,
+                border: `1px solid ${COLORS.cardBorder}`,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: 13,
-                fontWeight: 800,
-                color: COLORS.white,
                 flexShrink: 0,
               }}
             >
-              {initials}
-            </div>
-          )}
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 13,
-                fontWeight: 700,
-                color: COLORS.textPrimary,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {displayName}
-            </div>
-            <div
-              style={{
-                fontSize: 11,
-                color: COLORS.textMuted,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {user?.email}
-            </div>
+              <Icon name="log-out" size={14} color={COLORS.textMuted} />
+            </button>
           </div>
-          <button
-            onClick={handleSignOut}
-            title="Sign out"
-            style={{
-              padding: 8,
-              borderRadius: 10,
-              background: COLORS.cardBorder,
-              flexShrink: 0,
-            }}
-          >
-            <Icon name="log-out" size={16} color={COLORS.textSecondary} />
-          </button>
         </div>
       </aside>
 
@@ -231,9 +238,9 @@ export function AppShell({
             position: 'sticky',
             top: 0,
             zIndex: 20,
-            background: 'rgba(255, 255, 255, 0.85)',
-            backdropFilter: 'blur(12px)',
-            WebkitBackdropFilter: 'blur(12px)',
+            background: 'rgba(247,247,249,0.92)',
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
             borderBottom: `1px solid ${COLORS.cardBorder}`,
             padding: isMobile ? '12px 16px' : '14px 32px',
             display: 'flex',
@@ -272,6 +279,8 @@ export function AppShell({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  fontFamily: 'var(--font-syne)',
+                  letterSpacing: '-0.4px',
                 }}
               >
                 {title}
@@ -286,6 +295,7 @@ export function AppShell({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  fontFamily: 'var(--font-dm)',
                 }}
               >
                 {subtitle}
@@ -348,7 +358,7 @@ function SidebarItem({
 }) {
   const [hover, setHover] = useState(false);
   const bg = active
-    ? 'linear-gradient(135deg, rgba(111, 98, 88, 0.18), rgba(201, 184, 168, 0.12))'
+    ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.1))'
     : hover
     ? COLORS.cardBorder
     : 'transparent';
@@ -369,7 +379,7 @@ function SidebarItem({
         padding: '10px 12px',
         borderRadius: 12,
         background: bg,
-        border: active ? '1px solid rgba(111, 98, 88, 0.35)' : '1px solid transparent',
+        border: active ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent',
         color,
         fontSize: 14,
         fontWeight: 600,

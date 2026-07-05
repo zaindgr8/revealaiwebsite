@@ -41,8 +41,9 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
-            🛡️ Early Warning Alerts
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
+            <Icon name="warning" size={15} color={COLORS.danger} />
+            Early Warning Alerts
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
             {warnings.length
@@ -73,8 +74,8 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
       {warnings.length === 0 && (
         <div
           style={{
-            background: 'rgba(201, 184, 168,0.06)',
-            border: `1px solid rgba(201, 184, 168,0.18)`,
+            background: 'rgba(22, 163, 74, 0.06)',
+            border: `1px solid rgba(22, 163, 74, 0.18)`,
             borderRadius: 12,
             padding: 14,
             display: 'flex',
@@ -82,7 +83,7 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
             gap: 10,
           }}
         >
-          <Icon name="checkmark" size={16} color={COLORS.green} style={{ marginTop: 2 }} />
+          <Icon name="checkmark" size={16} color={COLORS.success} style={{ marginTop: 2 }} />
           <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.55 }}>
             We monitor your last 3–5 sessions for burnout, sustained stress, mood slumps and pattern
             loops. Right now nothing has crossed our thresholds.
@@ -127,7 +128,7 @@ export function EarlyWarnings({ sessions }: { sessions: TherapySession[] }) {
               <div
                 key={rule.title}
                 style={{
-                  background: 'rgba(111, 98, 88, 0.03)',
+                  background: 'rgba(17, 17, 24, 0.025)',
                   border: `1px solid ${COLORS.cardBorder}`,
                   borderRadius: 10,
                   padding: 12,
@@ -175,7 +176,7 @@ function WarningRow({
   return (
     <div
       style={{
-        background: 'rgba(111, 98, 88, 0.03)',
+        background: 'rgba(17, 17, 24, 0.025)',
         border: `1px solid ${color}33`,
         borderLeft: `3px solid ${color}`,
         borderRadius: 12,

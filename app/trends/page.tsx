@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { COLORS } from '@/lib/theme';
 import { Card } from '@/components/Card';
+import { Icon } from '@/components/Icon';
 import { MiniChart } from '@/components/MiniChart';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
@@ -20,41 +21,41 @@ import { fmtDate } from '@/lib/format';
 function motivationalMessage(s: Stats) {
   if (s.streak >= 7)
     return {
-      emoji: '🏆',
+      icon: 'sparkles',
       title: 'Amazing consistency!',
       body: `${s.streak} days straight. You're building a powerful self-awareness habit.`,
       color: COLORS.green,
     };
   if (s.streak >= 3)
     return {
-      emoji: '🔥',
+      icon: 'flame',
       title: 'On a roll!',
       body: `${s.streak}-day streak. Keep showing up for yourself every day.`,
       color: COLORS.blue,
     };
   if (s.weeklyAvg >= 75)
     return {
-      emoji: '✨',
+      icon: 'sparkles',
       title: "You're thriving",
       body: "Your mood has been consistently high. Whatever you're doing — keep it up.",
       color: COLORS.green,
     };
   if (s.energyDeclining)
     return {
-      emoji: '💤',
+      icon: 'time',
       title: 'Your body needs rest',
       body: 'Energy has been low lately. Prioritise sleep and one restorative activity today.',
       color: COLORS.warning,
     };
   if (s.weeklyAvg < 45)
     return {
-      emoji: '💙',
+      icon: 'pulse',
       title: "Tough stretch — you're not alone",
       body: "It's okay to struggle. You showed up today, and that matters more than the score.",
       color: COLORS.blue,
     };
   return {
-    emoji: '📈',
+    icon: 'trending-up',
     title: 'Keep the momentum',
     body: 'Your data shows genuine self-awareness. Every check-in makes the picture clearer.',
     color: COLORS.green,
@@ -116,9 +117,9 @@ function TrendsInner() {
           <ProfileStatsExplainer />
           <div style={{ height: 16 }} />
 
-          <Grid cols={3} style={{ marginBottom: 16 }}>
+          <Grid cols={3} gap={14} style={{ marginBottom: 14 }}>
             <StatBox big={stats.weeklyAvg.toString()} sub="Avg Mood" />
-            <StatBox big={`${stats.streak}🔥`} sub="Day Streak" />
+            <StatBox big={stats.streak.toString()} sub="Day Streak" icon="flame" />
             <StatBox big={stats.totalSessions.toString()} sub="Sessions" />
           </Grid>
 
@@ -135,7 +136,9 @@ function TrendsInner() {
                 marginBottom: 16,
               }}
             >
-              <span style={{ fontSize: 32, marginTop: 2 }}>{motiv.emoji}</span>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: `${motiv.color}15`, border: `1px solid ${motiv.color}30`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <Icon name={motiv.icon} size={20} color={motiv.color} />
+              </div>
               <div style={{ flex: 1 }}>
                 <div
                   style={{
@@ -143,6 +146,8 @@ function TrendsInner() {
                     fontWeight: 700,
                     color: motiv.color,
                     marginBottom: 4,
+                    fontFamily: 'var(--font-syne)',
+                    letterSpacing: '-0.3px',
                   }}
                 >
                   {motiv.title}
@@ -154,10 +159,11 @@ function TrendsInner() {
             </div>
           )}
 
-          <Grid cols={2} style={{ marginBottom: 16 }}>
-            <Card>
-              <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16 }}>
-                📊 Highlights
+          <Grid cols={2} gap={14} style={{ marginBottom: 14 }}>
+            <Card style={{ marginBottom: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16, fontFamily: 'var(--font-syne)' }}>
+                <Icon name="trending-up" size={15} color={COLORS.blue} />
+                Highlights
               </div>
               <div
                 style={{
@@ -193,13 +199,16 @@ function TrendsInner() {
               >
                 <div
                   style={{
+                    display: 'flex', alignItems: 'center', gap: 7,
                     fontSize: 14,
                     fontWeight: 700,
                     color: COLORS.warning,
                     marginBottom: 6,
+                    fontFamily: 'var(--font-syne)',
                   }}
                 >
-                  ⚠️ Burnout Risk Detected
+                  <Icon name="warning" size={15} color={COLORS.warning} />
+                  Burnout Risk Detected
                 </div>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
                   Your energy has been declining over recent sessions. Consider lightening your
@@ -207,9 +216,10 @@ function TrendsInner() {
                 </div>
               </div>
             ) : (
-              <Card>
-                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 8 }}>
-                  📈 Overall Direction
+              <Card style={{ marginBottom: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 8, fontFamily: 'var(--font-syne)' }}>
+                  <Icon name="trending-up" size={15} color={COLORS.blue} />
+                  Overall Direction
                 </div>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
                   Your scores are stable. Keep your daily check-ins to build a clearer picture of
@@ -220,23 +230,25 @@ function TrendsInner() {
           </Grid>
 
           <ChartCard
-            title="😊 Mood Score"
+            title="Mood Score"
             data={stats.allMood}
             dates={stats.allDates}
-            color={COLORS.green}
+            color={COLORS.blue}
           />
-          <Grid cols={2}>
+          <Grid cols={2} gap={14}>
             <ChartCard
-              title="⚡ Energy Level"
+              title="Energy Level"
               data={stats.allEnergy}
               dates={stats.allDates}
               color={COLORS.blue}
+              noMargin
             />
             <ChartCard
-              title="🌀 Stress Level"
+              title="Stress Level"
               data={stats.allStress}
               dates={stats.allDates}
               color={COLORS.danger}
+              noMargin
             />
           </Grid>
         </>
@@ -245,7 +257,7 @@ function TrendsInner() {
   );
 }
 
-function StatBox({ big, sub }: { big: string; sub: string }) {
+function StatBox({ big, sub, icon }: { big: string; sub: string; icon?: string }) {
   return (
     <div
       style={{
@@ -256,7 +268,10 @@ function StatBox({ big, sub }: { big: string; sub: string }) {
         textAlign: 'center',
       }}
     >
-      <div style={{ fontSize: 28, fontWeight: 800, color: COLORS.textPrimary }}>{big}</div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontSize: 28, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.8px' }}>
+        {big}
+        {icon && <Icon name={icon} size={18} color={COLORS.blue} />}
+      </div>
       <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }}>{sub}</div>
     </div>
   );
@@ -287,15 +302,17 @@ function ChartCard({
   data,
   dates,
   color,
+  noMargin,
 }: {
   title: string;
   data: number[];
   dates: string[];
   color: string;
+  noMargin?: boolean;
 }) {
   return (
-    <Card>
-      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16 }}>
+    <Card style={noMargin ? { marginBottom: 0 } : { marginBottom: 14 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
         {title}
       </div>
       <MiniChart data={data} color={color} height={110} labels={dates.map(fmtDate)} />

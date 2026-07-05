@@ -117,7 +117,7 @@ function TherapyInner() {
           }}
         >
           <div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.textPrimary }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.6px' }}>
               Your check-in is in
             </div>
             <div style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 4 }}>
@@ -143,7 +143,7 @@ function TherapyInner() {
         {(results.transcript || results.emotional_mirror) && (
           <div
             style={{
-              background: `linear-gradient(135deg, rgba(111, 98, 88,0.08), rgba(201, 184, 168,0.06))`,
+              background: `linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(14, 165, 233, 0.06))`,
               border: `1px solid ${COLORS.cardBorder}`,
               borderRadius: 18,
               padding: 20,
@@ -224,8 +224,8 @@ function TherapyInner() {
           </div>
         )}
 
-        <Grid cols={2}>
-          <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Grid cols={2} gap={14}>
+          <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 0 }}>
             <CircularProgress
               value={results.mood_score}
               size={170}
@@ -235,7 +235,7 @@ function TherapyInner() {
             />
           </Card>
 
-          <Card>
+          <Card style={{ marginBottom: 0 }}>
             <CardTitle>Breakdown</CardTitle>
             <MetricBar label="Energy Level" value={results.energy} color={COLORS.blue} />
             <MetricBar label="Stress Level" value={results.stress} color={COLORS.danger} />
@@ -246,23 +246,28 @@ function TherapyInner() {
           </Card>
         </Grid>
 
-        {previousSession && <ComparisonCard current={results} previous={previousSession} />}
+        {previousSession && (
+          <div style={{ marginTop: 14 }}>
+            <ComparisonCard current={results} previous={previousSession} />
+          </div>
+        )}
 
         <PersonalNoteCard
           current={results}
           recentSessions={recentSessionsRef.current}
         />
 
-        <Card>
-          <CardTitle>🧠 AI Insight</CardTitle>
+        <Card style={{ marginBottom: 0, marginTop: 14 }}>
+          <CardTitle icon="bulb">AI Insight</CardTitle>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.7 }}>
             {results.insight}
           </div>
         </Card>
+        <div style={{ height: 14 }} />
 
-        <Grid cols={2}>
-          <Card>
-            <CardTitle>💡 Recommendations</CardTitle>
+        <Grid cols={2} gap={14}>
+          <Card style={{ marginBottom: 0 }}>
+            <CardTitle icon="checkmark">Recommendations</CardTitle>
             {(results.tips ?? []).map((tip, i) => (
               <div
                 key={i}
@@ -296,20 +301,23 @@ function TherapyInner() {
             >
               <div
                 style={{
+                  display: 'flex', alignItems: 'center', gap: 7,
                   fontSize: 13,
                   fontWeight: 700,
                   color: COLORS.blue,
                   marginBottom: 8,
+                  fontFamily: 'var(--font-syne)',
                 }}
               >
-                🎯 Today&apos;s Action
+                <Icon name="pulse" size={14} color={COLORS.blue} />
+                Today&apos;s Action
               </div>
               <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
                 {results.daily_prompt}
               </div>
             </div>
           ) : (
-            <Card>
+            <Card style={{ marginBottom: 0 }}>
               <CardTitle>Next Step</CardTitle>
               <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
                 Talk to your AI coach about anything that came up, or view how today fits into
@@ -319,7 +327,7 @@ function TherapyInner() {
           )}
         </Grid>
 
-        <Grid cols={2}>
+        <Grid cols={2} gap={14}>
           <button
             onClick={() => {
               try {
@@ -333,15 +341,15 @@ function TherapyInner() {
               justifyContent: 'center',
               gap: 10,
               width: '100%',
-              background: COLORS.blue,
-              borderRadius: 18,
-              padding: '16px 18px',
+              background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+              borderRadius: 16,
+              padding: '15px 18px',
               color: COLORS.white,
               fontSize: 15,
               fontWeight: 700,
             }}
           >
-            <Icon name="chat" size={20} color={COLORS.white} />
+            <Icon name="chat" size={18} color={COLORS.white} />
             Talk to AI Coach
           </button>
 
@@ -349,6 +357,7 @@ function TherapyInner() {
             title="View My Trends"
             onClick={() => router.push('/trends')}
             icon={<Icon name="trending-up" size={18} color={COLORS.textPrimary} />}
+            style={{ borderRadius: 16 }}
           />
         </Grid>
       </AppShell>
@@ -368,13 +377,13 @@ function TherapyInner() {
           }}
         >
           <div className="animate-pulse-soft">
-            <Logo size={100} />
+            <Logo size={38} />
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary, marginTop: 28 }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary, marginTop: 32, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
             Analyzing your voice...
           </div>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
-            Detecting tone, pace, energy & emotions
+            Detecting tone, pace, energy &amp; emotions
           </div>
         </div>
       </AppShell>
@@ -388,76 +397,101 @@ function TherapyInner() {
           background: COLORS.card,
           border: `1px solid ${COLORS.cardBorder}`,
           borderRadius: 24,
-          padding: '48px 24px',
+          padding: '52px 24px 44px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          minHeight: 'calc(100vh - 220px)',
+          minHeight: 'calc(100vh - 180px)',
           justifyContent: 'center',
         }}
       >
+        {/* Status text */}
         <div
           style={{
-            fontSize: 16,
+            fontSize: 15,
             color: COLORS.textSecondary,
             textAlign: 'center',
-            lineHeight: 1.6,
-            marginBottom: 40,
-            maxWidth: 480,
+            lineHeight: 1.65,
+            marginBottom: 48,
+            maxWidth: 400,
           }}
         >
-          Talk about how you&apos;re feeling today.
-          <br />
-          Anything on your mind.
+          {isRecording ? (
+            <>Speak freely — anything on your mind.<br />We&apos;ll stop automatically at 60 seconds.</>
+          ) : (
+            <>Talk about how you&apos;re feeling today.<br />Anything on your mind.</>
+          )}
         </div>
 
-        <button
-          onClick={isRecording ? handleStop : handleStart}
-          style={{
-            width: 170,
-            height: 170,
-            borderRadius: 85,
-            border: `3px solid ${isRecording ? COLORS.danger : COLORS.blue}`,
-            background: isRecording ? COLORS.danger + '15' : 'transparent',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 28,
-            transition: 'all 0.2s',
-          }}
-        >
-          <Icon
-            name={isRecording ? 'stop' : 'mic'}
-            size={56}
-            color={isRecording ? COLORS.danger : COLORS.blue}
-          />
-        </button>
+        {/* Mic button with pulse rings */}
+        <div style={{ position: 'relative', marginBottom: 32 }}>
+          {isRecording && (
+            <>
+              <div className="recording-ring" />
+              <div className="recording-ring-2" />
+            </>
+          )}
+          <button
+            onClick={isRecording ? handleStop : handleStart}
+            style={{
+              width: 160,
+              height: 160,
+              borderRadius: 80,
+              border: `2.5px solid ${isRecording ? COLORS.danger : COLORS.blue}`,
+              background: isRecording
+                ? `radial-gradient(circle, ${COLORS.danger}18 0%, ${COLORS.danger}08 100%)`
+                : `radial-gradient(circle, rgba(37,99,235,0.07) 0%, transparent 70%)`,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'border-color 0.2s, background 0.2s',
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            <Icon
+              name={isRecording ? 'stop' : 'mic'}
+              size={52}
+              color={isRecording ? COLORS.danger : COLORS.blue}
+            />
+            <span style={{ fontSize: 10, fontWeight: 700, color: isRecording ? COLORS.danger : COLORS.textMuted, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+              {isRecording ? 'Stop' : 'Tap to start'}
+            </span>
+          </button>
+        </div>
 
-        <div style={{ fontSize: 40, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 4 }}>
-          {Math.floor(seconds / 60)}:{(seconds % 60).toString().padStart(2, '0')}
-          <span style={{ fontSize: 18, fontWeight: 400, color: COLORS.textMuted }}>
+        {/* Timer */}
+        <div style={{ textAlign: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 44, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-1px', lineHeight: 1 }}>
+            {Math.floor(seconds / 60)}:{(seconds % 60).toString().padStart(2, '0')}
+          </span>
+          <span style={{ fontSize: 16, fontWeight: 400, color: COLORS.textMuted }}>
             {' / 1:00'}
           </span>
         </div>
+
+        {/* Status label */}
         <div
           style={{
-            fontSize: 14,
-            color: isRecording ? COLORS.danger : COLORS.textSecondary,
+            fontSize: 13,
+            color: isRecording ? COLORS.danger : COLORS.textMuted,
             textAlign: 'center',
+            marginBottom: 32,
+            fontWeight: isRecording ? 600 : 400,
           }}
         >
-          {isRecording
-            ? 'Recording — tap to stop, or wait for auto-finish at 1:00'
-            : 'Tap the mic to start recording'}
+          {isRecording ? '● Recording in progress' : 'Tap the mic to start recording'}
         </div>
 
         {analyzeErr && (
-          <div style={{ marginTop: 16, color: COLORS.danger, fontSize: 13, textAlign: 'center' }}>
+          <div style={{ marginBottom: 16, color: COLORS.danger, fontSize: 13, textAlign: 'center' }}>
             {analyzeErr}
           </div>
         )}
 
-        <div style={{ marginTop: 32, width: '100%', maxWidth: 360 }}>
+        <div style={{ width: '100%', maxWidth: 340 }}>
           <WaveformVisualizer active={isRecording} barCount={35} stream={stream} />
         </div>
       </div>
@@ -465,9 +499,10 @@ function TherapyInner() {
   );
 }
 
-function CardTitle({ children }: { children: React.ReactNode }) {
+function CardTitle({ children, icon }: { children: React.ReactNode; icon?: string }) {
   return (
-    <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
+      {icon && <Icon name={icon} size={15} color={COLORS.blue} />}
       {children}
     </div>
   );
@@ -540,8 +575,9 @@ function ComparisonCard({
         }}
       >
         <div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: COLORS.textPrimary }}>
-            📊 Compared to Last Session
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 15, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
+            <Icon name="trending-up" size={16} color={COLORS.blue} />
+            Compared to Last Session
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{dateLabel}</div>
         </div>
@@ -566,14 +602,14 @@ function DiffTile({ label, current, delta, goodWhen }: DiffMeta) {
   const isFlat = delta === 0;
   const isUp = delta > 0;
   const isGood = isFlat ? null : (isUp && goodWhen === 'up') || (!isUp && goodWhen === 'down');
-  const color = isFlat ? COLORS.textMuted : isGood ? COLORS.green : COLORS.danger;
+  const color = isFlat ? COLORS.textMuted : isGood ? COLORS.success : COLORS.danger;
   const arrow = isFlat ? '–' : isUp ? '▲' : '▼';
   const sign = isUp ? '+' : '';
 
   return (
     <div
       style={{
-        background: 'rgba(111, 98, 88, 0.03)',
+        background: 'rgba(17, 17, 24, 0.025)',
         border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 12,
         padding: '12px 14px',
@@ -603,7 +639,7 @@ function PersonalNoteCard({
 
   return (
     <Card>
-      <CardTitle>✨ Personal Notes</CardTitle>
+      <CardTitle icon="sparkles">Personal Notes</CardTitle>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {lines.map((line, i) => (
           <div
@@ -617,7 +653,9 @@ function PersonalNoteCard({
               lineHeight: 1.55,
             }}
           >
-            <span style={{ fontSize: 16, lineHeight: 1.3, flexShrink: 0 }}>{line.emoji}</span>
+            <div style={{ width: 22, height: 22, borderRadius: 6, background: 'rgba(37,99,235,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
+              <Icon name={line.icon} size={13} color={COLORS.blue} />
+            </div>
             <span style={{ flex: 1 }}>{line.text}</span>
           </div>
         ))}
@@ -629,8 +667,8 @@ function PersonalNoteCard({
 function buildPersonalNotes(
   current: AnalysisResult,
   recent: TherapySession[]
-): { emoji: string; text: string }[] {
-  const notes: { emoji: string; text: string }[] = [];
+): { icon: string; text: string }[] {
+  const notes: { icon: string; text: string }[] = [];
   const hour = new Date().getHours();
   const timeBand =
     hour < 6 ? 'late night' : hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : hour < 22 ? 'evening' : 'night';
@@ -641,12 +679,12 @@ function buildPersonalNotes(
   );
   if (distinctDays.size >= 5) {
     notes.push({
-      emoji: '🔥',
+      icon: 'flame',
       text: `You've shown up ${distinctDays.size} days recently — that consistency is the work. The habit itself is rewiring your self-awareness.`,
     });
   } else if (distinctDays.size >= 2) {
     notes.push({
-      emoji: '🌱',
+      icon: 'trending-up',
       text: `${distinctDays.size}-day rhythm building. Two more sessions this week and the trend signal becomes much sharper.`,
     });
   }
@@ -654,17 +692,17 @@ function buildPersonalNotes(
   // Time-of-day note
   if (timeBand === 'morning' && current.energy < 50) {
     notes.push({
-      emoji: '☕',
+      icon: 'bulb',
       text: 'Low morning energy — try 5 minutes outside in daylight before your first task. Strongest non-caffeine cortisol lift available.',
     });
   } else if (timeBand === 'evening' && current.stress > 60) {
     notes.push({
-      emoji: '🌙',
+      icon: 'time',
       text: 'Evening stress is high. Avoid making decisions tonight — write down what is pressing you, sleep on it, decide tomorrow.',
     });
   } else if (timeBand === 'late night' && current.mood_score < 50) {
     notes.push({
-      emoji: '💤',
+      icon: 'time',
       text: 'Tough feelings at night get amplified — they look different in daylight. Be gentle with yourself and prioritise sleep.',
     });
   }
@@ -675,7 +713,7 @@ function buildPersonalNotes(
     const sameMode = recentModes.every((m) => m === current.detected_mode);
     if (sameMode && current.detected_mode) {
       notes.push({
-        emoji: '🎯',
+        icon: 'pulse',
         text: `Your last few sessions have all been "${current.detected_mode}" — there's a clear pattern. Worth sharing with your AI Coach to dig into what's driving it.`,
       });
     }
@@ -686,12 +724,12 @@ function buildPersonalNotes(
     const avgMood = Math.round(recent.reduce((s, x) => s + x.mood_score, 0) / recent.length);
     if (current.mood_score >= avgMood + 12) {
       notes.push({
-        emoji: '📈',
+        icon: 'trending-up',
         text: `Today's mood is well above your usual (${avgMood}). Whatever's different today — note it. That's actionable data.`,
       });
     } else if (current.mood_score <= avgMood - 12) {
       notes.push({
-        emoji: '📉',
+        icon: 'trending-down',
         text: `Today scored ${avgMood - current.mood_score} points below your typical mood. One off-day isn't a trend — be honest, not harsh.`,
       });
     }
@@ -704,7 +742,7 @@ function buildPersonalNotes(
     const droppedTotal = recentEnergy[recentEnergy.length - 1] - recentEnergy[0];
     if (declining && droppedTotal < -15) {
       notes.push({
-        emoji: '⚠️',
+        icon: 'warning',
         text: 'Energy is on a clear downward slope across your last few sessions. This is the 7–14 day burnout window — protect sleep and cut one non-essential commitment this week.',
       });
     }

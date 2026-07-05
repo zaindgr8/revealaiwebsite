@@ -14,10 +14,9 @@ export function Card({ children, onClick, style }: Props) {
       onClick={onClick}
       style={{
         background: COLORS.card,
-        borderRadius: 18,
-        padding: 20,
+        borderRadius: 20,
+        padding: 22,
         border: `1px solid ${COLORS.cardBorder}`,
-        marginBottom: 16,
         cursor: onClick ? 'pointer' : 'default',
         ...style,
       }}
