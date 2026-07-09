@@ -38,6 +38,11 @@ export type UserContext = {
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
+async function getAuthToken(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? '';
+}
+
 export async function chatTherapy({
   messages,
   context,
@@ -45,10 +50,17 @@ export async function chatTherapy({
   messages: ChatMessage[];
   context: Partial<AnalysisResult>;
 }): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('chat-therapy', {
-    body: { messages, context },
+  const token = await getAuthToken();
+  const res = await fetch('/api/chat-therapy', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ messages, context }),
   });
-  if (error) throw new Error(error.message || 'Chat failed');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'Chat failed');
   if (data?.error) throw new Error(data.error);
   return data.reply;
 }
@@ -64,17 +76,24 @@ export async function analyzeMood({
   durationSeconds: number;
   userContext?: UserContext;
 }): Promise<AnalysisResult> {
-  const { data, error } = await supabase.functions.invoke('analyze-mood', {
-    body: {
+  const token = await getAuthToken();
+  const res = await fetch('/api/analyze-mood', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
       audio_base64: audioBase64,
       mime_type: mimeType,
       duration_seconds: durationSeconds,
       user_context: userContext,
-    },
+    }),
   });
-  if (error) throw new Error(error.message || 'Analysis failed');
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'Analysis failed');
   if (data?.error) throw new Error(data.error);
-  return data;
+  return data as AnalysisResult;
 }
 
 export function buildUserContext(sessions: TherapySession[]): UserContext {

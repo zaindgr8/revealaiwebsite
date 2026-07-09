@@ -33,7 +33,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${bricolage.variable} ${poppins.variable}`}>
-      <body>
+      <body suppressHydrationWarning>
         <AuthProvider>
           <NavProgress />
           {children}
