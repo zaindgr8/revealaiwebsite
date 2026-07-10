@@ -7,6 +7,8 @@ import { SecondaryButton } from '@/components/GradientButton';
 import { MetricBar } from '@/components/MetricBar';
 import { CircularProgress } from '@/components/CircularProgress';
 import { WaveformVisualizer } from '@/components/WaveformVisualizer';
+import { WaveformPlayer } from '@/components/WaveformPlayer';
+import { TranscriptPlayer } from '@/components/TranscriptPlayer';
 import { Logo } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -14,7 +16,7 @@ import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { useAudioRecorder, type RecordingResult } from '@/hooks/useAudioRecorder';
-import { extractAcousticFeatures, type AcousticFeatures } from '@/lib/audioFeatures';
+import { extractAcousticFeatures, type AcousticFeatures, type SegmentEmotion } from '@/lib/audioFeatures';
 import {
   analyzeMood,
   buildUserContext,
@@ -42,6 +44,13 @@ function TherapyInner() {
   const [analyzeErr, setAnalyzeErr] = useState<string | null>(null);
   const [previousSession, setPreviousSession] = useState<TherapySession | null>(null);
   const recentSessionsRef = useRef<TherapySession[]>([]);
+  // Phase 2: audio playback state
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [waveEnvelope, setWaveEnvelope] = useState<number[]>([]);
+  const [segmentEmotions, setSegmentEmotions] = useState<SegmentEmotion[]>([]);
+  const [audioDuration, setAudioDuration] = useState(0);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const blobUrlRef = useRef<string | null>(null); // track for cleanup
 
   // Pre-load recent history once so we can pass context to analyze + show comparison.
   useEffect(() => {
@@ -59,19 +68,34 @@ function TherapyInner() {
     async (audio: RecordingResult | null) => {
       if (!audio) return;
       setPhase('analyzing');
+
+      // Revoke previous blob URL
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
+      }
+
       try {
         const userContext = buildUserContext(recentSessionsRef.current);
 
         // Extract real acoustic features client-side BEFORE calling the LLM.
-        // These real numbers are fed into the Gemini prompt so it describes
-        // actual signal data rather than hallucinating plausible-sounding metrics.
         let acousticFeatures: AcousticFeatures | undefined;
         try {
           acousticFeatures = await extractAcousticFeatures(audio.blob);
+          // Phase 2: store waveform data for playback UI
+          if (acousticFeatures) {
+            setWaveEnvelope(acousticFeatures.waveform_envelope);
+            setSegmentEmotions(acousticFeatures.segment_emotions);
+            setAudioDuration(acousticFeatures.duration_seconds || audio.durationSeconds);
+          }
         } catch (aErr) {
-          // Non-fatal — analysis continues without real metrics
           console.warn('[therapy] Acoustic extraction failed:', aErr);
         }
+
+        // Create blob URL for audio playback
+        const url = URL.createObjectURL(audio.blob);
+        blobUrlRef.current = url;
+        setBlobUrl(url);
 
         const data = await analyzeMood({
           audioBase64: audio.base64,
@@ -87,8 +111,16 @@ function TherapyInner() {
         setPhase('record');
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
+    };
+  }, []);
 
   const { isRecording, seconds, start, stop, cancel, error, stream } = useAudioRecorder({
     maxSeconds: 60,
@@ -115,6 +147,18 @@ function TherapyInner() {
     await processAudio(audio);
   };
 
+  // Reset to record — revoke blob
+  const handleNewRecording = () => {
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
+    }
+    setBlobUrl(null);
+    setWaveEnvelope([]);
+    setSegmentEmotions([]);
+    setPhase('record');
+  };
+
   if (phase === 'results' && results) {
     const moodLabel = labelForMood(results.mood_score);
     return (
@@ -139,7 +183,7 @@ function TherapyInner() {
             </div>
           </div>
           <button
-            onClick={() => setPhase('record')}
+            onClick={handleNewRecording}
             style={{
               padding: '10px 16px',
               borderRadius: 12,
@@ -154,7 +198,18 @@ function TherapyInner() {
           </button>
         </div>
 
-        {/* ── Voice analysis card ──────────────────────────────────────── */}
+        {/* ── Emotion-colored waveform player ────────────────────────── */}
+        {blobUrl && waveEnvelope.length > 0 && (
+          <WaveformPlayer
+            blobUrl={blobUrl}
+            envelope={waveEnvelope}
+            segments={segmentEmotions}
+            duration={audioDuration}
+            audioRef={audioRef}
+          />
+        )}
+
+        {/* ── Reveal Voice AI card (transcript + vocal summary) ──────────── */}
         {(results.transcript || results.vocal_summary || results.emotional_mirror) && (
           <div
             style={{
@@ -165,70 +220,40 @@ function TherapyInner() {
               marginBottom: 16,
             }}
           >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                marginBottom: 12,
-              }}
-            >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Icon name="mic" size={16} color={COLORS.blue} />
-              <span
-                style={{
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color: COLORS.blue,
-                  textTransform: 'uppercase',
-                  letterSpacing: 0.6,
-                }}
-              >
+              <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.6 }}>
                 Reveal Voice AI
               </span>
             </div>
 
-            {results.transcript && (
-              <div style={{ marginBottom: (results.vocal_summary || results.emotional_mirror) ? 14 : 0 }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.textMuted,
-                    marginBottom: 4,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                  }}
-                >
+            {/* Synced transcript player */}
+            {results.transcript && blobUrl ? (
+              <div style={{ marginBottom: (results.vocal_summary || results.emotional_mirror) ? 16 : 0 }}>
+                <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   What we heard you say
                 </div>
-                <div
-                  style={{
-                    fontSize: 14,
-                    color: COLORS.textPrimary,
-                    lineHeight: 1.6,
-                    fontStyle: 'italic',
-                  }}
-                >
+                <TranscriptPlayer
+                  transcript={results.transcript}
+                  durationSeconds={audioDuration || results.duration_seconds || 30}
+                  pauseCount={results.vocal_metrics?.pause_count ?? 2}
+                  audioRef={audioRef}
+                />
+              </div>
+            ) : results.transcript ? (
+              <div style={{ marginBottom: (results.vocal_summary || results.emotional_mirror) ? 14 : 0 }}>
+                <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  What we heard you say
+                </div>
+                <div style={{ fontSize: 14, color: COLORS.textPrimary, lineHeight: 1.6, fontStyle: 'italic' }}>
                   &ldquo;{results.transcript}&rdquo;
                 </div>
               </div>
-            )}
+            ) : null}
 
             {(results.vocal_summary || results.emotional_mirror) && (
-              <div
-                style={{
-                  paddingTop: results.transcript ? 14 : 0,
-                  borderTop: results.transcript ? `1px solid ${COLORS.cardBorder}` : 'none',
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: COLORS.textMuted,
-                    marginBottom: 4,
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                  }}
-                >
+              <div style={{ paddingTop: results.transcript ? 14 : 0, borderTop: results.transcript ? `1px solid ${COLORS.cardBorder}` : 'none' }}>
+                <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                   How your voice sounded
                 </div>
                 <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
@@ -257,9 +282,11 @@ function TherapyInner() {
             <MetricBar label="Positivity" value={results.positivity} color={COLORS.green} />
             <MetricBar label="Confidence" value={results.confidence} color={COLORS.blue} />
             <InlineRow label="Pace" value={PACE_LABEL[results.pace] ?? results.pace} />
-            <InlineRow label="Detected mode" value={results.detected_mode} />
           </Card>
         </Grid>
+
+        {/* ── Detected Mode badge ─────────────────────────────────── */}
+        <DetectedModeBadge mode={results.detected_mode} />
 
         {previousSession && (
           <div style={{ marginTop: 14 }}>
@@ -272,7 +299,7 @@ function TherapyInner() {
           recentSessions={recentSessionsRef.current}
         />
 
-        {/* ── Vocal Metrics card ───────────────────────────────────────── */}
+        {/* ── Vocal Metrics card ────────────────────────────────────── */}
         {results.vocal_metrics && (
           <VocalMetricsCard metrics={results.vocal_metrics} />
         )}
@@ -529,7 +556,100 @@ function CardTitle({ children, icon }: { children: React.ReactNode; icon?: strin
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// DetectedModeBadge — large, icon-led, screenshot-worthy mode display
+// ─────────────────────────────────────────────────────────────────────────────
+const MODE_META: Record<string, { emoji: string; tagline: string; bg: string; border: string; text: string }> = {
+  calm:       { emoji: '🌊', tagline: 'Grounded and at ease', bg: 'rgba(37,99,235,0.06)', border: 'rgba(37,99,235,0.2)', text: '#2563EB' },
+  happy:      { emoji: '✨', tagline: 'High on life right now', bg: 'rgba(16,163,74,0.06)', border: 'rgba(16,163,74,0.25)', text: '#16A34A' },
+  motivated:  { emoji: '⚡', tagline: 'Ready to move', bg: 'rgba(245,158,11,0.06)', border: 'rgba(245,158,11,0.25)', text: '#D97706' },
+  anxious:    { emoji: '🌀', tagline: 'Something is pressing on you', bg: 'rgba(217,119,6,0.06)', border: 'rgba(217,119,6,0.25)', text: '#D97706' },
+  venting:    { emoji: '🔥', tagline: 'Letting it out — that takes courage', bg: 'rgba(239,68,68,0.06)', border: 'rgba(239,68,68,0.2)', text: '#EF4444' },
+  angry:      { emoji: '⚡', tagline: 'Strong signal — something matters here', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.25)', text: '#EF4444' },
+  sad:        { emoji: '🌧️', tagline: 'Carrying something heavy', bg: 'rgba(37,99,235,0.07)', border: 'rgba(37,99,235,0.2)', text: '#2563EB' },
+  reflective: { emoji: '🪞', tagline: 'Thinking things through', bg: 'rgba(139,92,246,0.06)', border: 'rgba(139,92,246,0.2)', text: '#7C3AED' },
+  neutral:    { emoji: '⚖️', tagline: 'Balanced, measured', bg: 'rgba(138,138,154,0.06)', border: 'rgba(138,138,154,0.2)', text: '#54545F' },
+};
+
+function DetectedModeBadge({ mode }: { mode: string }) {
+  const meta = MODE_META[mode.toLowerCase()] ?? MODE_META.neutral;
+  const label = mode.charAt(0).toUpperCase() + mode.slice(1);
+
+  return (
+    <div
+      style={{
+        background: meta.bg,
+        border: `1.5px solid ${meta.border}`,
+        borderRadius: 20,
+        padding: '20px 24px',
+        marginTop: 14,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 18,
+      }}
+    >
+      {/* Big emoji icon */}
+      <div
+        style={{
+          width: 60,
+          height: 60,
+          borderRadius: 16,
+          background: `${meta.border}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 28,
+          flexShrink: 0,
+        }}
+      >
+        {meta.emoji}
+      </div>
+
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: meta.text, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>
+          Detected Mode
+        </div>
+        <div
+          style={{
+            fontSize: 26,
+            fontWeight: 900,
+            color: meta.text,
+            fontFamily: 'var(--font-syne)',
+            letterSpacing: '-0.5px',
+            lineHeight: 1.1,
+          }}
+        >
+          {label}
+        </div>
+        <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 4 }}>
+          {meta.tagline}
+        </div>
+      </div>
+
+      {/* RevealAI watermark for screenshots */}
+      <div
+        style={{
+          fontSize: 9,
+          fontWeight: 700,
+          color: COLORS.textMuted,
+          textTransform: 'uppercase',
+          letterSpacing: 1.2,
+          textAlign: 'right',
+          flexShrink: 0,
+          opacity: 0.6,
+        }}
+      >
+        Reveal
+        <br />
+        Voice AI
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // VocalMetricsCard — renders the real measured acoustic numbers
+
 // ─────────────────────────────────────────────────────────────────────────────
 type VocalMetricsProps = {
   metrics: {
