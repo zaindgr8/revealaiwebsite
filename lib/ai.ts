@@ -58,11 +58,53 @@ export type UserContext = {
   recent_modes?: string[];
 };
 
+export type StreakData = {
+  current_streak: number;
+  longest_streak: number;
+  last_checkin_date: string | null;
+};
+
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
 
 async function getAuthToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? '';
+}
+
+/**
+ * Call after a successful analysis to update the streak.
+ * Non-fatal — caller should catch and ignore errors.
+ */
+export async function updateStreak(): Promise<StreakData> {
+  const token = await getAuthToken();
+  const res = await fetch('/api/update-streak', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'Streak update failed');
+  return data as StreakData;
+}
+
+/**
+ * Fetch the current streak without updating it.
+ * Returns null if the user has no streak row yet.
+ */
+export async function getStreak(): Promise<StreakData | null> {
+  try {
+    const token = await getAuthToken();
+    const res = await fetch('/api/update-streak', {
+      method: 'GET',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as StreakData;
+  } catch {
+    return null;
+  }
 }
 
 export async function chatTherapy({

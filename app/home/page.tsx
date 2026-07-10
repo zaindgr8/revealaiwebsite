@@ -9,12 +9,15 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { EarlyWarnings } from '@/components/EarlyWarnings';
+import { StreakBadge } from '@/components/StreakBadge';
 import { useAuth } from '@/lib/auth-context';
 import {
   computeStats,
   getRecentTherapySessions,
+  getStreak,
   type Stats,
   type TherapySession,
+  type StreakData,
 } from '@/lib/ai';
 import { DAY_ABBR, fmtDate, todayPretty } from '@/lib/format';
 
@@ -30,6 +33,18 @@ function HomeInner() {
   const [sessions, setSessions] = useState<TherapySession[]>([]);
   const [lastSession, setLastSession] = useState<TherapySession | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  // Phase 3 states
+  const [streak, setStreak] = useState<StreakData | null>(null);
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+  const [recapDismissed, setRecapDismissed] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const dismissed = localStorage.getItem(`recap_dismissed_${todayStr}`);
+      setRecapDismissed(!!dismissed);
+    }
+  }, []);
 
   const firstName =
     (user?.user_metadata?.full_name as string | undefined)?.split(' ')[0] ??
@@ -44,6 +59,10 @@ function HomeInner() {
       setSessions(recent);
       setStats(computeStats(recent));
       if (recent.length) setLastSession(recent[0]);
+
+      // Fetch persistent database streak
+      const s = await getStreak();
+      setStreak(s);
     } catch {
       setStats(null);
     } finally {
@@ -95,26 +114,170 @@ function HomeInner() {
         </div>
       )}
 
-      {/* ── Streak banner ── */}
-      {stats && stats.streak > 1 && (
+      {/* ── Warm Re-engagement Nudge ── */}
+      {!nudgeDismissed && lastSession && (() => {
+        const diffMs = Date.now() - new Date(lastSession.created_at).getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+        return diffHours >= 24;
+      })() && (
         <div
           style={{
+            background: 'linear-gradient(135deg, rgba(37,99,235,0.04) 0%, rgba(99,102,241,0.04) 100%)',
+            border: `1.5px dashed ${COLORS.cardBorder}`,
+            borderRadius: 18,
+            padding: 16,
+            marginBottom: 16,
             display: 'flex',
             alignItems: 'center',
-            gap: 10,
-            background: 'rgba(37,99,235,0.05)',
-            border: '1px solid rgba(37,99,235,0.15)',
-            borderRadius: 14,
-            padding: '11px 16px',
-            marginBottom: 16,
+            justifyContent: 'space-between',
+            gap: 12,
           }}
         >
-          <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(37,99,235,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="flame" size={15} color={COLORS.blue} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 20 }}>🌸</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary }}>
+                Haven&apos;t heard from you today
+              </div>
+              <div style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 1 }}>
+                Want to check in and see how your voice is sounding?
+              </div>
+            </div>
           </div>
-          <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.blue }}>
-            {stats.streak}-day streak — keep showing up.
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={() => router.push('/therapy')}
+              style={{
+                background: COLORS.blue,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 8,
+                padding: '6px 12px',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Check in
+            </button>
+            <button
+              onClick={() => setNudgeDismissed(true)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: COLORS.textMuted,
+                fontSize: 13,
+                cursor: 'pointer',
+                padding: 4,
+              }}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Weekly Recap Card (Mondays) ── */}
+      {(() => {
+        const isMonday = new Date().getDay() === 1;
+        const weeklySessions = sessions.filter((s) => {
+          const diffMs = Date.now() - new Date(s.created_at).getTime();
+          return diffMs <= 7 * 24 * 60 * 60 * 1000;
+        });
+        const hasRecap = weeklySessions.length >= 3;
+
+        if (!isMonday || recapDismissed || !hasRecap) return null;
+
+        const recapAvgMood = Math.round(
+          weeklySessions.reduce((sum, s) => sum + s.mood_score, 0) / weeklySessions.length
+        );
+
+        const recapBestSession = weeklySessions.reduce(
+          (best, s) => (s.mood_score > best.mood_score ? s : best),
+          weeklySessions[0]
+        );
+        const DAYS_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const recapBestDayName = DAYS_FULL[new Date(recapBestSession.created_at).getDay()];
+
+        const moodScores = weeklySessions.map((s) => s.mood_score);
+        const recapMoodSwing = Math.max(...moodScores) - Math.min(...moodScores);
+
+        const handleDismissRecap = () => {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          localStorage.setItem(`recap_dismissed_${todayStr}`, 'true');
+          setRecapDismissed(true);
+        };
+
+        return (
+          <Card
+            style={{
+              marginBottom: 20,
+              background: 'linear-gradient(135deg, rgba(139,92,246,0.04) 0%, rgba(99,102,241,0.04) 100%)',
+              border: `1.5px solid rgba(139,92,246,0.18)`,
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 20 }}>📊</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
+                    Your Weekly Recap
+                  </div>
+                  <div style={{ fontSize: 11, color: COLORS.textMuted }}>Monday review · last 7 days</div>
+                </div>
+              </div>
+              <button
+                onClick={handleDismissRecap}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: COLORS.textMuted,
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  padding: 4,
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+              <div style={{ background: 'rgba(17,17,24,0.02)', padding: 12, borderRadius: 12, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 }}>Avg Mood</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: COLORS.blue, fontFamily: 'var(--font-syne)', marginTop: 4 }}>
+                  {recapAvgMood} <span style={{ fontSize: 12, fontWeight: 500, color: COLORS.textSecondary }}>pts</span>
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(17,17,24,0.02)', padding: 12, borderRadius: 12, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 }}>Best Day</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.green, fontFamily: 'var(--font-syne)', marginTop: 8 }}>
+                  {recapBestDayName}
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(17,17,24,0.02)', padding: 12, borderRadius: 12, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 }}>Mood Swing</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: COLORS.danger, fontFamily: 'var(--font-syne)', marginTop: 4 }}>
+                  {recapMoodSwing} <span style={{ fontSize: 12, fontWeight: 500, color: COLORS.textSecondary }}>pts span</span>
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(17,17,24,0.02)', padding: 12, borderRadius: 12, border: `1px solid ${COLORS.cardBorder}` }}>
+                <div style={{ fontSize: 10, color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 0.4 }}>Streak Status</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: '#D97706', fontFamily: 'var(--font-syne)', marginTop: 8 }}>
+                  🔥 {streak ? `${streak.current_streak} days` : '0 days'}
+                </div>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
+      {/* ── Streak banner ── */}
+      {streak && streak.current_streak > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <StreakBadge currentStreak={streak.current_streak} longestStreak={streak.longest_streak} />
         </div>
       )}
 
@@ -238,7 +401,7 @@ function HomeInner() {
             >
               <StatItem value={stats.weeklyAvg} label="Avg Mood" />
               <div style={{ width: 1, background: COLORS.cardBorder }} />
-              <StatItem value={stats.streak} label="Day Streak" />
+              <StatItem value={streak ? streak.current_streak : stats.streak} label="Day Streak" />
               <div style={{ width: 1, background: COLORS.cardBorder }} />
               <StatItem value={stats.totalSessions} label="Sessions" />
             </div>

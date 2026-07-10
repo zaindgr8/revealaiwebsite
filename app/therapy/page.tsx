@@ -9,6 +9,8 @@ import { CircularProgress } from '@/components/CircularProgress';
 import { WaveformVisualizer } from '@/components/WaveformVisualizer';
 import { WaveformPlayer } from '@/components/WaveformPlayer';
 import { TranscriptPlayer } from '@/components/TranscriptPlayer';
+import { MoodSparklineInline } from '@/components/MoodSparklineInline';
+import { StreakBadge } from '@/components/StreakBadge';
 import { Logo } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -21,8 +23,10 @@ import {
   analyzeMood,
   buildUserContext,
   getRecentTherapySessions,
+  updateStreak,
   type AnalysisResult,
   type TherapySession,
+  type StreakData,
 } from '@/lib/ai';
 
 const PACE_LABEL: Record<string, string> = { Slow: 'Slow', Normal: 'Normal', Fast: 'Fast' };
@@ -50,7 +54,9 @@ function TherapyInner() {
   const [segmentEmotions, setSegmentEmotions] = useState<SegmentEmotion[]>([]);
   const [audioDuration, setAudioDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const blobUrlRef = useRef<string | null>(null); // track for cleanup
+  const blobUrlRef = useRef<string | null>(null);
+  // Phase 3: streak + trend
+  const [streak, setStreak] = useState<StreakData | null>(null);
 
   // Pre-load recent history once so we can pass context to analyze + show comparison.
   useEffect(() => {
@@ -106,6 +112,14 @@ function TherapyInner() {
         });
         setResults(data);
         setPhase('results');
+
+        // Phase 3: update streak (non-fatal)
+        try {
+          const s = await updateStreak();
+          setStreak(s);
+        } catch {
+          // Streak update failed — streak badge just won't show
+        }
       } catch (e) {
         setAnalyzeErr((e as Error).message || 'Analysis failed.');
         setPhase('record');
@@ -170,7 +184,7 @@ function TherapyInner() {
             alignItems: 'center',
             justifyContent: 'space-between',
             gap: 16,
-            marginBottom: 24,
+            marginBottom: 20,
             flexWrap: 'wrap',
           }}
         >
@@ -182,21 +196,64 @@ function TherapyInner() {
               Mood score, energy, stress and insight — all from your voice.
             </div>
           </div>
-          <button
-            onClick={handleNewRecording}
-            style={{
-              padding: '10px 16px',
-              borderRadius: 12,
-              border: `1px solid ${COLORS.cardBorder}`,
-              color: COLORS.textPrimary,
-              fontSize: 13,
-              fontWeight: 700,
-              background: COLORS.card,
-            }}
-          >
-            New recording
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {streak && streak.current_streak > 0 && (
+              <StreakBadge currentStreak={streak.current_streak} longestStreak={streak.longest_streak} size="sm" />
+            )}
+            <button
+              onClick={handleNewRecording}
+              style={{
+                padding: '10px 16px',
+                borderRadius: 12,
+                border: `1px solid ${COLORS.cardBorder}`,
+                color: COLORS.textPrimary,
+                fontSize: 13,
+                fontWeight: 700,
+                background: COLORS.card,
+                cursor: 'pointer',
+              }}
+            >
+              New recording
+            </button>
+          </div>
         </div>
+
+        {/* ── Trend Delta Banner ── */}
+        {(() => {
+          const currentMood = results.mood_score;
+          const previousMood = previousSession?.mood_score;
+          if (previousMood === undefined || isNaN(previousMood)) return null;
+
+          const moodDelta = currentMood - previousMood;
+          const trendUp = moodDelta >= 0;
+          const moodDeltaColor = trendUp ? COLORS.success : COLORS.danger;
+          const moodDeltaArrow = trendUp ? '▲' : '▼';
+          const moodDeltaText = moodDelta !== 0
+            ? `Your mood is ${trendUp ? 'up' : 'down'} ${Math.abs(moodDelta)} points from your last check-in`
+            : `Your mood is unchanged from your last check-in`;
+
+          return (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+                background: trendUp ? 'rgba(22,163,74,0.06)' : 'rgba(239,68,68,0.06)',
+                border: `1px solid ${trendUp ? 'rgba(22,163,74,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                borderRadius: 14,
+                padding: '11px 15px',
+                marginBottom: 16,
+              }}
+            >
+              <span style={{ color: moodDeltaColor, fontWeight: 900, fontSize: 12 }}>
+                {moodDeltaArrow}
+              </span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.textSecondary }}>
+                {moodDeltaText}
+              </span>
+            </div>
+          );
+        })()}
 
         {/* ── Emotion-colored waveform player ────────────────────────── */}
         {blobUrl && waveEnvelope.length > 0 && (
@@ -265,14 +322,29 @@ function TherapyInner() {
         )}
 
         <Grid cols={2} gap={14}>
-          <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 0 }}>
+          <Card style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 0, justifyContent: 'center' }}>
             <CircularProgress
               value={results.mood_score}
-              size={170}
+              size={160}
               label="Mood Score"
               sublabel={moodLabel}
               color={COLORS.green}
             />
+            {/* 7-day mood sparkline inline */}
+            {(() => {
+              const prevScores = recentSessionsRef.current.slice(0, 6).reverse().map(s => s.mood_score);
+              const scores = [...prevScores, results.mood_score];
+              if (scores.length < 2) return null;
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 14, width: '100%', borderTop: `1px solid ${COLORS.cardBorder}`, paddingTop: 12 }}>
+                  <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
+                    7-Day Mood Trend
+                  </div>
+                  <MoodSparklineInline scores={scores} width={130} height={35} />
+                </div>
+              );
+            })()}
           </Card>
 
           <Card style={{ marginBottom: 0 }}>
