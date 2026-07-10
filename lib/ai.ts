@@ -1,5 +1,16 @@
 'use client';
 import { supabase } from './supabase';
+import type { AcousticFeatures } from './audioFeatures';
+
+export type VocalMetrics = {
+  pitch_variability: number;
+  avg_pitch_hz: number;
+  pause_frequency: 'low' | 'medium' | 'high';
+  pause_count: number;
+  speech_rate_wpm: number;
+  jitter_shimmer_index: number;
+  volume_consistency: number;
+};
 
 export type TherapySession = {
   id: string;
@@ -11,12 +22,23 @@ export type TherapySession = {
   confidence: number;
   pace: string;
   detected_mode: string;
+  // Legacy field — kept for backward compat (mapped from ai_insight)
   insight: string;
+  // Legacy field — kept for backward compat (mapped from recommendations)
   tips: string[];
+  // Legacy field — kept for backward compat (mapped from todays_action)
   daily_prompt?: string;
   transcript?: string;
+  /** @deprecated use vocal_summary */
   emotional_mirror?: string;
   duration_seconds?: number;
+  // New Phase-1 fields
+  vocal_metrics?: VocalMetrics;
+  vocal_summary?: string;
+  transcript_summary?: string;
+  ai_insight?: string;
+  recommendations?: string[];
+  todays_action?: string;
 };
 
 export type AnalysisResult = Omit<TherapySession, 'id' | 'created_at'>;
@@ -70,11 +92,13 @@ export async function analyzeMood({
   mimeType,
   durationSeconds,
   userContext,
+  acousticFeatures,
 }: {
   audioBase64: string;
   mimeType: string;
   durationSeconds: number;
   userContext?: UserContext;
+  acousticFeatures?: AcousticFeatures;
 }): Promise<AnalysisResult> {
   const token = await getAuthToken();
   const res = await fetch('/api/analyze-mood', {
@@ -88,6 +112,7 @@ export async function analyzeMood({
       mime_type: mimeType,
       duration_seconds: durationSeconds,
       user_context: userContext,
+      acoustic_features: acousticFeatures ?? null,
     }),
   });
   const data = await res.json();

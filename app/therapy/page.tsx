@@ -14,6 +14,7 @@ import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { useAudioRecorder, type RecordingResult } from '@/hooks/useAudioRecorder';
+import { extractAcousticFeatures, type AcousticFeatures } from '@/lib/audioFeatures';
 import {
   analyzeMood,
   buildUserContext,
@@ -60,11 +61,24 @@ function TherapyInner() {
       setPhase('analyzing');
       try {
         const userContext = buildUserContext(recentSessionsRef.current);
+
+        // Extract real acoustic features client-side BEFORE calling the LLM.
+        // These real numbers are fed into the Gemini prompt so it describes
+        // actual signal data rather than hallucinating plausible-sounding metrics.
+        let acousticFeatures: AcousticFeatures | undefined;
+        try {
+          acousticFeatures = await extractAcousticFeatures(audio.blob);
+        } catch (aErr) {
+          // Non-fatal — analysis continues without real metrics
+          console.warn('[therapy] Acoustic extraction failed:', aErr);
+        }
+
         const data = await analyzeMood({
           audioBase64: audio.base64,
           mimeType: audio.mimeType,
           durationSeconds: audio.durationSeconds,
           userContext,
+          acousticFeatures,
         });
         setResults(data);
         setPhase('results');
@@ -140,7 +154,8 @@ function TherapyInner() {
           </button>
         </div>
 
-        {(results.transcript || results.emotional_mirror) && (
+        {/* ── Voice analysis card ──────────────────────────────────────── */}
+        {(results.transcript || results.vocal_summary || results.emotional_mirror) && (
           <div
             style={{
               background: `linear-gradient(135deg, rgba(37, 99, 235, 0.06), rgba(14, 165, 233, 0.06))`,
@@ -173,7 +188,7 @@ function TherapyInner() {
             </div>
 
             {results.transcript && (
-              <div style={{ marginBottom: results.emotional_mirror ? 14 : 0 }}>
+              <div style={{ marginBottom: (results.vocal_summary || results.emotional_mirror) ? 14 : 0 }}>
                 <div
                   style={{
                     fontSize: 11,
@@ -198,7 +213,7 @@ function TherapyInner() {
               </div>
             )}
 
-            {results.emotional_mirror && (
+            {(results.vocal_summary || results.emotional_mirror) && (
               <div
                 style={{
                   paddingTop: results.transcript ? 14 : 0,
@@ -217,7 +232,7 @@ function TherapyInner() {
                   How your voice sounded
                 </div>
                 <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-                  {results.emotional_mirror}
+                  {results.vocal_summary || results.emotional_mirror}
                 </div>
               </div>
             )}
@@ -257,10 +272,15 @@ function TherapyInner() {
           recentSessions={recentSessionsRef.current}
         />
 
+        {/* ── Vocal Metrics card ───────────────────────────────────────── */}
+        {results.vocal_metrics && (
+          <VocalMetricsCard metrics={results.vocal_metrics} />
+        )}
+
         <Card style={{ marginBottom: 0, marginTop: 14 }}>
           <CardTitle icon="bulb">AI Insight</CardTitle>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.7 }}>
-            {results.insight}
+            {results.ai_insight || results.insight}
           </div>
         </Card>
         <div style={{ height: 14 }} />
@@ -268,7 +288,7 @@ function TherapyInner() {
         <Grid cols={2} gap={14}>
           <Card style={{ marginBottom: 0 }}>
             <CardTitle icon="checkmark">Recommendations</CardTitle>
-            {(results.tips ?? []).map((tip, i) => (
+            {((results.recommendations ?? results.tips) ?? []).map((tip, i) => (
               <div
                 key={i}
                 style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}
@@ -290,7 +310,7 @@ function TherapyInner() {
             ))}
           </Card>
 
-          {results.daily_prompt ? (
+          {(results.todays_action || results.daily_prompt) ? (
             <div
               style={{
                 background: 'rgba(99,179,237,0.08)',
@@ -313,7 +333,7 @@ function TherapyInner() {
                 Today&apos;s Action
               </div>
               <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-                {results.daily_prompt}
+                {results.todays_action || results.daily_prompt}
               </div>
             </div>
           ) : (
@@ -508,7 +528,214 @@ function CardTitle({ children, icon }: { children: React.ReactNode; icon?: strin
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VocalMetricsCard — renders the real measured acoustic numbers
+// ─────────────────────────────────────────────────────────────────────────────
+type VocalMetricsProps = {
+  metrics: {
+    avg_pitch_hz: number;
+    pitch_variability: number;
+    speech_rate_wpm: number;
+    pause_count: number;
+    pause_frequency: string;
+    volume_consistency: number;
+    jitter_shimmer_index: number;
+  };
+};
+
+function VocalMetricsCard({ metrics }: VocalMetricsProps) {
+  const statChips = [
+    {
+      label: 'Avg Pitch',
+      value: metrics.avg_pitch_hz > 0 ? `${metrics.avg_pitch_hz} Hz` : '—',
+      icon: 'pulse',
+    },
+    {
+      label: 'Speech Rate',
+      value: metrics.speech_rate_wpm > 0 ? `${metrics.speech_rate_wpm} WPM` : '—',
+      icon: 'time',
+    },
+    {
+      label: 'Pauses',
+      value: `${metrics.pause_count} (${metrics.pause_frequency})`,
+      icon: 'bulb',
+    },
+  ];
+
+  const bars = [
+    {
+      label: 'Pitch Variability',
+      value: metrics.pitch_variability,
+      color: COLORS.blue,
+      hint: metrics.pitch_variability < 25
+        ? 'Monotone / flat delivery'
+        : metrics.pitch_variability < 55
+        ? 'Moderate expressiveness'
+        : 'Highly expressive / dynamic',
+    },
+    {
+      label: 'Volume Consistency',
+      value: metrics.volume_consistency,
+      color: COLORS.green,
+      hint: metrics.volume_consistency > 75
+        ? 'Steady, controlled volume'
+        : metrics.volume_consistency > 45
+        ? 'Some volume fluctuation'
+        : 'Erratic volume changes',
+    },
+    {
+      label: 'Vocal Tension Index',
+      value: metrics.jitter_shimmer_index,
+      color: metrics.jitter_shimmer_index > 55 ? COLORS.danger : COLORS.blue,
+      hint: metrics.jitter_shimmer_index < 25
+        ? 'Smooth, relaxed voice'
+        : metrics.jitter_shimmer_index < 55
+        ? 'Mild vocal tension'
+        : 'Elevated tension / roughness',
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        background: 'linear-gradient(135deg, rgba(14,165,233,0.05) 0%, rgba(99,102,241,0.05) 100%)',
+        border: `1px solid ${COLORS.cardBorder}`,
+        borderRadius: 18,
+        padding: 20,
+        marginTop: 14,
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 16,
+        }}
+      >
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: 8,
+            background: 'linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.15))',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          <Icon name="mic" size={14} color={COLORS.blue} />
+        </div>
+        <div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: COLORS.textPrimary,
+              fontFamily: 'var(--font-syne)',
+              letterSpacing: '-0.2px',
+            }}
+          >
+            Vocal Signal Metrics
+          </div>
+          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
+            Real measured data · signal-processed before AI analysis
+          </div>
+        </div>
+      </div>
+
+      {/* Stat chips */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, 1fr)',
+          gap: 8,
+          marginBottom: 16,
+        }}
+      >
+        {statChips.map((chip) => (
+          <div
+            key={chip.label}
+            style={{
+              background: 'rgba(17,17,24,0.03)',
+              border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 12,
+              padding: '10px 12px',
+              textAlign: 'center',
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: COLORS.textMuted,
+                marginBottom: 4,
+                textTransform: 'uppercase',
+                letterSpacing: 0.4,
+              }}
+            >
+              {chip.label}
+            </div>
+            <div
+              style={{
+                fontSize: 15,
+                fontWeight: 800,
+                color: COLORS.textPrimary,
+                fontFamily: 'var(--font-syne)',
+                letterSpacing: '-0.3px',
+              }}
+            >
+              {chip.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Metric bars */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {bars.map((bar) => (
+          <div key={bar.label}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 5,
+              }}
+            >
+              <span style={{ fontSize: 12, color: COLORS.textSecondary, fontWeight: 600 }}>
+                {bar.label}
+              </span>
+              <span style={{ fontSize: 11, color: COLORS.textMuted }}>{bar.hint}</span>
+            </div>
+            <div
+              style={{
+                height: 6,
+                borderRadius: 3,
+                background: 'rgba(17,17,24,0.08)',
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                style={{
+                  height: '100%',
+                  width: `${bar.value}%`,
+                  borderRadius: 3,
+                  background: bar.color,
+                  transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function InlineRow({ label, value }: { label: string; value: string }) {
+
   return (
     <div
       style={{

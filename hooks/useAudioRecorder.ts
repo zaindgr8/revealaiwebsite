@@ -5,6 +5,8 @@ export type RecordingResult = {
   base64: string;
   mimeType: string;
   durationSeconds: number;
+  /** Raw audio Blob — used by the acoustic feature extractor before upload. */
+  blob: Blob;
 };
 
 function pickMimeType(): string {
@@ -147,6 +149,7 @@ export function useAudioRecorder({
               base64,
               mimeType: mimeRef.current,
               durationSeconds: secondsRef.current,
+              blob,
             };
           }
         } catch (err) {
