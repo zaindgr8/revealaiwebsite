@@ -11,6 +11,7 @@ import { WaveformPlayer } from '@/components/WaveformPlayer';
 import { TranscriptPlayer } from '@/components/TranscriptPlayer';
 import { MoodSparklineInline } from '@/components/MoodSparklineInline';
 import { StreakBadge } from '@/components/StreakBadge';
+import { MoodCardExport } from '@/components/MoodCardExport';
 import { Logo } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -57,6 +58,8 @@ function TherapyInner() {
   const blobUrlRef = useRef<string | null>(null);
   // Phase 3: streak + trend
   const [streak, setStreak] = useState<StreakData | null>(null);
+  // Phase 4: Shareable Card
+  const shareTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // Pre-load recent history once so we can pass context to analyze + show comparison.
   useEffect(() => {
@@ -446,14 +449,10 @@ function TherapyInner() {
           )}
         </Grid>
 
-        <Grid cols={2} gap={14}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+          {/* Primary CTA: Share Mood Card */}
           <button
-            onClick={() => {
-              try {
-                sessionStorage.setItem('chatContext', JSON.stringify(results));
-              } catch {}
-              router.push('/chat');
-            }}
+            ref={shareTriggerRef}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -462,23 +461,80 @@ function TherapyInner() {
               width: '100%',
               background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
               borderRadius: 16,
-              padding: '15px 18px',
+              padding: '16px 18px',
               color: COLORS.white,
-              fontSize: 15,
-              fontWeight: 700,
+              fontSize: 16,
+              fontWeight: 800,
+              fontFamily: 'var(--font-syne)',
+              border: 'none',
+              cursor: 'pointer',
+              boxShadow: '0 10px 15px -3px rgba(37,99,235,0.2)',
             }}
           >
-            <Icon name="chat" size={18} color={COLORS.white} />
-            Talk to AI Coach
+            <Icon name="share" size={18} color={COLORS.white} />
+            Share Mood Card
           </button>
 
-          <SecondaryButton
-            title="View My Trends"
-            onClick={() => router.push('/trends')}
-            icon={<Icon name="trending-up" size={18} color={COLORS.textPrimary} />}
-            style={{ borderRadius: 16 }}
-          />
-        </Grid>
+          {/* Secondary CTA buttons grid */}
+          <Grid cols={2} gap={10}>
+            <button
+              onClick={() => {
+                try {
+                  sessionStorage.setItem('chatContext', JSON.stringify(results));
+                } catch {}
+                router.push('/chat');
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                background: COLORS.card,
+                border: `1.5px solid ${COLORS.cardBorder}`,
+                borderRadius: 16,
+                padding: '13px 16px',
+                color: COLORS.textSecondary,
+                fontSize: 13.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <Icon name="chat" size={16} color={COLORS.textSecondary} />
+              Talk to Coach
+            </button>
+
+            <button
+              onClick={() => router.push('/trends')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                width: '100%',
+                background: COLORS.card,
+                border: `1.5px solid ${COLORS.cardBorder}`,
+                borderRadius: 16,
+                padding: '13px 16px',
+                color: COLORS.textSecondary,
+                fontSize: 13.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              <Icon name="trending-up" size={16} color={COLORS.textSecondary} />
+              View Trends
+            </button>
+          </Grid>
+        </div>
+
+        {/* Shareable Mood Card Engine */}
+        <MoodCardExport
+          moodScore={results.mood_score}
+          mode={results.detected_mode}
+          insightLine={results.vocal_summary || results.ai_insight || ''}
+          triggerRef={shareTriggerRef}
+        />
       </AppShell>
     );
   }
