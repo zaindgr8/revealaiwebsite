@@ -10,18 +10,37 @@ import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { useAuth } from '@/lib/auth-context';
 import { signOut } from '@/lib/auth';
-import { deleteAccount, updateProfileName, uploadAvatar } from '@/lib/profile';
+import { deleteAccount, updateProfileName, uploadAvatar, cancelSubscription } from '@/lib/profile';
 import { getAllSessionsForExport } from '@/lib/ai';
 
 function SettingsInner() {
   const router = useRouter();
-  const { user, profile, setProfile } = useAuth();
+  const { user, profile, setProfile, refreshProfile } = useAuth();
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [savingName, setSavingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [cancellingSub, setCancellingSub] = useState(false);
+
+  const handleCancelSubscription = async () => {
+    if (!user?.id) return;
+    const confirmCancel = window.confirm(
+      'Are you sure you want to cancel your subscription? This will immediately end your access and clear any remaining minutes.'
+    );
+    if (!confirmCancel) return;
+    setCancellingSub(true);
+    try {
+      await cancelSubscription(user.id);
+      refreshProfile();
+      alert('Subscription cancelled successfully.');
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setCancellingSub(false);
+    }
+  };
   const [notifications, setNotifications] = useState({
     morning: true,
     burnout: true,
@@ -60,7 +79,7 @@ function SettingsInner() {
     try {
       const url = await uploadAvatar(user.id, file);
       setProfile((prev) =>
-        prev ? { ...prev, avatar_url: url } : { full_name: displayName, avatar_url: url }
+        prev ? { ...prev, avatar_url: url } : { full_name: displayName, avatar_url: url, trial_ends_at: null, subscription_status: null, subscription_minutes_remaining: null, total_minutes_used: null, pending_payment_intent_id: null }
       );
     } catch (err) {
       alert((err as Error).message);
@@ -78,7 +97,7 @@ function SettingsInner() {
       setProfile((prev) =>
         prev
           ? { ...prev, full_name: nameInput.trim() }
-          : { full_name: nameInput.trim(), avatar_url: null }
+          : { full_name: nameInput.trim(), avatar_url: null, trial_ends_at: null, subscription_status: null, subscription_minutes_remaining: null, total_minutes_used: null, pending_payment_intent_id: null }
       );
       setEditingName(false);
     } catch (err) {
@@ -337,6 +356,149 @@ function SettingsInner() {
           ))}
         </Card>
       </Grid>
+
+      <Card style={{ marginTop: 14 }}>
+        <SectionTitle>Subscription & Billing</SectionTitle>
+        {(() => {
+          const subStatus = profile?.subscription_status ?? 'trial';
+          const trialEndsAt = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+          const now = new Date();
+          const diffMs = trialEndsAt ? trialEndsAt.getTime() - now.getTime() : 0;
+          const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+          const minutesRemaining = profile?.subscription_minutes_remaining ?? 0;
+
+          let planName = 'Free Trial';
+          let planPrice = '$0 (Free)';
+          let expiryText = `${daysLeft} days remaining`;
+          let detailsText = 'Test AI-powered therapy and voice wellness insights';
+
+          if (subStatus === 'active') {
+            planName = 'Premium Plan';
+            planPrice = '$12 / month';
+            expiryText = `Renews in ${daysLeft} days`;
+            detailsText = 'Full access to voice decoding, mood trends, and therapy';
+          } else if (subStatus === 'expired') {
+            planName = 'Plan Expired';
+            planPrice = '$12 / month';
+            expiryText = 'Subscription inactive';
+            detailsText = 'Subscribe to reactivate your AI therapy access';
+          }
+
+          return (
+            <div>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 16,
+                  padding: '12px 0',
+                  borderBottom: `1px solid ${COLORS.cardBorder}`,
+                }}
+              >
+                <div>
+                  <div style={rowLabelStyle}>Current Plan</div>
+                  <div style={rowSubStyle}>{detailsText}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span
+                    style={{
+                      background: 'rgba(37,99,235,0.06)',
+                      color: COLORS.blue,
+                      padding: '4px 10px',
+                      borderRadius: 12,
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    {planName}
+                  </span>
+                  <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 4 }}>{planPrice}</div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: 16,
+                  padding: '12px 0',
+                  borderBottom: `1px solid ${COLORS.cardBorder}`,
+                }}
+              >
+                <div>
+                  <div style={rowLabelStyle}>Minutes & Expiry</div>
+                  <div style={rowSubStyle}>{expiryText}</div>
+                </div>
+                <div style={{ textAlign: 'right', fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
+                  {minutesRemaining} mins left
+                </div>
+              </div>
+
+              {/* Action Buttons row */}
+              <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+                {subStatus !== 'active' ? (
+                  <button
+                    onClick={() => router.push('/payment')}
+                    style={{
+                      padding: '10px 18px',
+                      background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: 10,
+                      fontSize: 13.5,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      fontFamily: 'var(--font-syne)',
+                    }}
+                  >
+                    Upgrade to Premium — $12/month
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => router.push('/payment')}
+                      style={{
+                        padding: '10px 18px',
+                        background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: 10,
+                        fontSize: 13.5,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        fontFamily: 'var(--font-syne)',
+                      }}
+                    >
+                      Top-Up Minutes — $12
+                    </button>
+                    <button
+                      onClick={handleCancelSubscription}
+                      disabled={cancellingSub}
+                      style={{
+                        padding: '10px 18px',
+                        background: 'transparent',
+                        color: COLORS.danger,
+                        border: `1.5px solid ${COLORS.danger}33`,
+                        borderRadius: 10,
+                        fontSize: 13.5,
+                        fontWeight: 700,
+                        cursor: cancellingSub ? 'not-allowed' : 'pointer',
+                        fontFamily: 'var(--font-syne)',
+                      }}
+                    >
+                      {cancellingSub ? 'Cancelling…' : 'Cancel Subscription'}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </Card>
 
       <Card style={{ marginTop: 14 }}>
         <SectionTitle>Privacy & Data</SectionTitle>

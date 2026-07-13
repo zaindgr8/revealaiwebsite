@@ -20,6 +20,41 @@ const AuthContext = createContext<AuthCtx>({
   loading: true,
 });
 
+/**
+ * Initialize the 3-day free trial if the user doesn't have one yet.
+ * Fails silently if DB columns don't exist yet (migration not run).
+ */
+async function initTrialIfNeeded(userId: string) {
+  try {
+    // Only try if DB supports the column — wrap in try/catch
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('trial_ends_at')
+      .eq('id', userId)
+      .single();
+
+    // If column doesn't exist, Supabase returns a 42703 error — skip gracefully
+    if (error?.code === '42703') return;
+    if (error) return;
+
+    if (!data?.trial_ends_at) {
+      const trialEnd = new Date();
+      trialEnd.setDate(trialEnd.getDate() + 3); // 3-day free trial
+      await supabase
+        .from('profiles')
+        .update({
+          trial_ends_at: trialEnd.toISOString(),
+          subscription_status: 'trial',
+          subscription_minutes_remaining: 0,
+          total_minutes_used: 0,
+        })
+        .eq('id', userId);
+    }
+  } catch {
+    // Silently skip — don't block profile loading
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -27,6 +62,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const fetchProfileData = useCallback(async (userId: string) => {
     try {
+      // Initialize trial on first login (no-op if already set or migration not run)
+      await initTrialIfNeeded(userId);
       const p = await getProfile(userId);
       setProfile(p);
     } catch (e) {

@@ -28,7 +28,7 @@ function modeColor(mode: string) {
 
 function HomeInner() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [stats, setStats] = useState<Stats | null>(null);
   const [sessions, setSessions] = useState<TherapySession[]>([]);
   const [lastSession, setLastSession] = useState<TherapySession | null>(null);
@@ -281,81 +281,224 @@ function HomeInner() {
         </div>
       )}
 
-      {/* ── Primary CTA ── */}
-      <button
-        onClick={() => router.push('/therapy')}
+      {/* ── Primary CTA Row (Check-In & Subscription) ── */}
+      <div
         style={{
-          width: '100%',
-          textAlign: 'left',
-          borderRadius: 20,
-          padding: '22px 24px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: 16,
           marginBottom: 20,
-          background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
-          position: 'relative',
-          overflow: 'hidden',
         }}
       >
-        {/* decorative blur orb */}
-        <div style={{ position: 'absolute', right: -20, top: -20, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
-        <div
+        {/* Daily Check-In */}
+        <button
+          onClick={() => router.push('/therapy')}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 16,
-            flexWrap: 'wrap',
+            textAlign: 'left',
+            borderRadius: 20,
+            padding: '22px 24px',
+            background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
             position: 'relative',
-            zIndex: 1,
+            overflow: 'hidden',
+            border: 'none',
+            cursor: 'pointer',
+            boxShadow: '0 4px 20px rgba(37,99,235,0.15)',
           }}
         >
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Icon name="mic" size={20} color={COLORS.white} />
-              </div>
-              <div
-                style={{
-                  background: 'rgba(255,255,255,0.18)',
-                  padding: '3px 10px',
-                  borderRadius: 20,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  color: COLORS.white,
-                  letterSpacing: '0.06em',
-                }}
-              >
-                {stats?.doneToday ? '✓ DONE TODAY' : 'DAILY CHECK-IN'}
-              </div>
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.white, marginBottom: 4, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
-              {stats?.doneToday ? 'Check-In Complete' : 'Morning Check-In'}
-            </div>
-            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.82)' }}>
-              {stats?.doneToday
-                ? `Mood ${stats.latestMood} · Feeling ${stats.latestMode}`
-                : 'Record 60 seconds — we decode your mood & energy'}
-            </div>
-          </div>
+          {/* decorative blur orb */}
+          <div style={{ position: 'absolute', right: -20, top: -20, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
           <div
             style={{
-              background: 'rgba(255,255,255,0.15)',
-              border: '1px solid rgba(255,255,255,0.25)',
-              color: COLORS.white,
-              padding: '10px 18px',
-              borderRadius: 12,
-              fontSize: 14,
-              fontWeight: 700,
               display: 'flex',
               alignItems: 'center',
-              gap: 7,
-              flexShrink: 0,
+              justifyContent: 'space-between',
+              gap: 16,
+              position: 'relative',
+              zIndex: 1,
+              height: '100%',
             }}
           >
-            {stats?.doneToday ? 'View Results' : 'Start'}
-            <Icon name="arrow-forward" size={15} color={COLORS.white} />
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Icon name="mic" size={20} color={COLORS.white} />
+                </div>
+                <div
+                  style={{
+                    background: 'rgba(255,255,255,0.18)',
+                    padding: '3px 10px',
+                    borderRadius: 20,
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: COLORS.white,
+                    letterSpacing: '0.06em',
+                  }}
+                >
+                  {stats?.doneToday ? '✓ DONE TODAY' : 'DAILY CHECK-IN'}
+                </div>
+              </div>
+              <div style={{ fontSize: 19, fontWeight: 800, color: COLORS.white, marginBottom: 4, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
+                {stats?.doneToday ? 'Check-In Complete' : 'Morning Check-In'}
+              </div>
+              <div style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.82)' }}>
+                {stats?.doneToday
+                  ? `Mood ${stats.latestMood} · Feeling ${stats.latestMode}`
+                  : 'Record 60 seconds — we decode your mood & energy'}
+              </div>
+            </div>
+            <div
+              style={{
+                background: 'rgba(255,255,255,0.15)',
+                border: '1px solid rgba(255,255,255,0.25)',
+                color: COLORS.white,
+                padding: '10px 18px',
+                borderRadius: 12,
+                fontSize: 13.5,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                flexShrink: 0,
+              }}
+            >
+              {stats?.doneToday ? 'View Results' : 'Start'}
+              <Icon name="arrow-forward" size={15} color={COLORS.white} />
+            </div>
           </div>
-        </div>
-      </button>
+        </button>
+
+        {/* Subscription & Usage */}
+        {(() => {
+          const subStatus = profile?.subscription_status ?? 'trial';
+          const trialEndsAt = profile?.trial_ends_at ? new Date(profile.trial_ends_at) : null;
+          const now = new Date();
+          const diffMs = trialEndsAt ? trialEndsAt.getTime() - now.getTime() : 0;
+          const daysLeft = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+          const minutesRemaining = profile?.subscription_minutes_remaining ?? 0;
+          
+          let planName = 'Free Trial';
+          let planDetails = `${daysLeft} days remaining`;
+          let actionLabel = 'Upgrade Plan';
+          let actionPath = '/payment';
+          let isLowQuota = false;
+
+          if (subStatus === 'active') {
+            planName = 'Premium Plan';
+            planDetails = `$12/month • ${daysLeft} days left`;
+            actionLabel = 'Manage Plan';
+            actionPath = '/settings';
+            if (minutesRemaining <= 30) {
+              isLowQuota = true;
+              actionLabel = 'Top-Up Minutes';
+              actionPath = '/payment';
+            }
+          } else if (subStatus === 'expired') {
+            planName = 'Plan Expired';
+            planDetails = 'Renew to continue therapy sessions';
+            actionLabel = 'Renew Subscription';
+            actionPath = '/payment';
+          }
+
+          const totalQuota = 150;
+          const progressPct = Math.min(100, Math.max(0, (minutesRemaining / totalQuota) * 100));
+
+          return (
+            <div
+              style={{
+                borderRadius: 20,
+                padding: '20px 22px',
+                background: COLORS.card,
+                border: `1.5px solid ${COLORS.cardBorder}`,
+                boxShadow: '0 4px 24px rgba(37,99,235,0.02)',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: 12,
+                position: 'relative',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Plan Header */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      color: subStatus === 'active' ? COLORS.blue : '#EA580C',
+                      background: subStatus === 'active' ? 'rgba(37,99,235,0.06)' : 'rgba(234,88,12,0.06)',
+                      padding: '3px 9px',
+                      borderRadius: 12,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    ⚡ {planName}
+                  </span>
+                  {subStatus !== 'expired' && (
+                    <span style={{ fontSize: 11.5, fontWeight: 600, color: COLORS.textSecondary }}>
+                      ⏳ {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11.5, color: COLORS.textMuted, marginTop: 2 }}>
+                  {planDetails}
+                </div>
+              </div>
+
+              {/* Progress bar and minutes indicator */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary }}>Quota Remaining</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.blue }}>
+                    {minutesRemaining} <span style={{ fontSize: 10.5, color: COLORS.textSecondary, fontWeight: 500 }}>/ {totalQuota} mins</span>
+                  </span>
+                </div>
+                {/* Progress track */}
+                <div style={{ width: '100%', height: 7, borderRadius: 4, background: 'rgba(37,99,235,0.06)', overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: `${progressPct}%`,
+                      height: '100%',
+                      borderRadius: 4,
+                      background: progressPct <= 20 ? COLORS.danger : `linear-gradient(90deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                onClick={() => router.push(actionPath)}
+                style={{
+                  width: '100%',
+                  padding: '10px 14px',
+                  background: isLowQuota || subStatus !== 'active'
+                    ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`
+                    : 'transparent',
+                  color: isLowQuota || subStatus !== 'active' ? '#fff' : COLORS.blue,
+                  border: isLowQuota || subStatus !== 'active' ? 'none' : `1.5px solid ${COLORS.blue}33`,
+                  borderRadius: 12,
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  fontFamily: 'var(--font-syne)',
+                }}
+              >
+                {actionLabel}
+                <Icon name="arrow-forward" size={13} color={isLowQuota || subStatus !== 'active' ? '#fff' : COLORS.blue} />
+              </button>
+            </div>
+          );
+        })()}
+      </div>
 
       {/* ── Charts grid ── */}
       <Grid cols={2} gap={14}>

@@ -29,6 +29,7 @@ import {
   type TherapySession,
   type StreakData,
 } from '@/lib/ai';
+import { deductSessionMinutes } from '@/lib/subscription';
 
 const PACE_LABEL: Record<string, string> = { Slow: 'Slow', Normal: 'Normal', Fast: 'Fast' };
 
@@ -60,6 +61,8 @@ function TherapyInner() {
   const [streak, setStreak] = useState<StreakData | null>(null);
   // Phase 4: Shareable Card
   const shareTriggerRef = useRef<HTMLButtonElement | null>(null);
+  // Subscription: top-up modal
+  const [showTopUpBanner, setShowTopUpBanner] = useState(false);
 
   // Pre-load recent history once so we can pass context to analyze + show comparison.
   useEffect(() => {
@@ -123,6 +126,16 @@ function TherapyInner() {
         } catch {
           // Streak update failed — streak badge just won't show
         }
+
+        // Deduct session minutes from subscription (non-fatal, skipped during trial)
+        try {
+          const deductResult = await deductSessionMinutes(audio.durationSeconds || 60);
+          if (deductResult.needsTopUp) {
+            setShowTopUpBanner(true);
+          }
+        } catch {
+          // Non-fatal — don't block session results
+        }
       } catch (e) {
         setAnalyzeErr((e as Error).message || 'Analysis failed.');
         setPhase('record');
@@ -181,6 +194,54 @@ function TherapyInner() {
     return (
       <AppShell title="Analysis Results" subtitle="Your voice, decoded">
         <MedicalDisclaimer />
+
+        {/* ── Top-Up Banner — shown when minutes run out ── */}
+        {showTopUpBanner && (
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(37,99,235,0.06), rgba(14,165,233,0.06))',
+              border: '1.5px solid rgba(37,99,235,0.18)',
+              borderRadius: 16,
+              padding: '16px 18px',
+              marginBottom: 18,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 14,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 24 }}>🔋</span>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
+                  You&apos;ve used all 150 minutes
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
+                  Top up with 150 more minutes for just $12 to keep going.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => router.push('/payment')}
+              style={{
+                background: `linear-gradient(135deg, #2563EB, #0EA5E9)`,
+                color: '#fff',
+                border: 'none',
+                borderRadius: 10,
+                padding: '9px 18px',
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                flexShrink: 0,
+              }}
+            >
+              Top Up — $12
+            </button>
+          </div>
+        )}
+
         <div
           style={{
             display: 'flex',

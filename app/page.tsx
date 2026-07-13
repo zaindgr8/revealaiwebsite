@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
 import { Icon } from '@/components/Icon';
 import { Logo } from '@/components/Logo';
+import { PricingModal } from '@/components/PricingModal';
 import './landing.css';
 
 const WAVE_BAR_COUNT = 40;
@@ -24,9 +25,18 @@ export default function LandingPage() {
   const { user } = useAuth();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const ctaHref = user ? '/home' : '/signup';
+
+  // Open pricing modal for non-logged-in users; logged-in go straight to /home
+  const handleGetStarted = (e: React.MouseEvent) => {
+    if (!user) {
+      e.preventDefault();
+      setShowPricingModal(true);
+    }
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 50);
@@ -138,7 +148,7 @@ export default function LandingPage() {
           <li><button type="button" onClick={() => scrollTo('how')}>How It Works</button></li>
           <li><button type="button" onClick={() => scrollTo('pricing')}>Pricing</button></li>
           <li>
-            <Link href={ctaHref} prefetch className="nav-cta" onClick={closeMenu}>
+            <Link href={ctaHref} prefetch className="nav-cta" onClick={(e) => { closeMenu(); handleGetStarted(e); }}>
               {user ? 'Open Dashboard' : 'Get Started'}
             </Link>
           </li>
@@ -163,7 +173,7 @@ export default function LandingPage() {
             <em>how</em> you say it — not just what you say.
           </p>
           <div className="hero-buttons">
-            <Link href={ctaHref} prefetch className="btn-store primary btn-magnetic">
+            <Link href={ctaHref} prefetch className="btn-store primary btn-magnetic" onClick={handleGetStarted}>
               <svg viewBox="0 0 24 24" fill="currentColor">
                 <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z" />
               </svg>
@@ -335,6 +345,7 @@ export default function LandingPage() {
               features={['5 check-ins per month', 'Basic mood analysis', 'Burnout snapshot', 'Mobile app access']}
               ctaLabel="Get Started Free"
               ctaHref={ctaHref}
+              onCtaClick={handleGetStarted}
             />
             <PricingCard
               plan="Pro"
@@ -345,6 +356,7 @@ export default function LandingPage() {
               ctaLabel="Start Pro Trial"
               ctaHref={ctaHref}
               featured
+              onCtaClick={handleGetStarted}
             />
             <PricingCard
               plan="Team"
@@ -354,6 +366,7 @@ export default function LandingPage() {
               features={['5 team seats', 'Team health dashboard', 'Manager insights', 'All Pro features', 'API access', 'Dedicated support']}
               ctaLabel="Talk to Us"
               ctaHref={ctaHref}
+              onCtaClick={handleGetStarted}
             />
           </div>
         </div>
@@ -451,6 +464,11 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* Pricing Modal — shown when non-user clicks any Get Started CTA */}
+      {showPricingModal && (
+        <PricingModal onClose={() => setShowPricingModal(false)} />
+      )}
     </div>
   );
 }
@@ -485,10 +503,11 @@ function TestiCard({ quote, name, role, initials }: { quote: string; name: strin
 }
 
 function PricingCard({
-  plan, price, period, desc, features, featured, ctaLabel, ctaHref,
+  plan, price, period, desc, features, featured, ctaLabel, ctaHref, onCtaClick,
 }: {
   plan: string; price: string; period: string; desc: string;
   features: string[]; featured?: boolean; ctaLabel: string; ctaHref: string;
+  onCtaClick?: (e: React.MouseEvent) => void;
 }) {
   return (
     <div className={`pricing-card${featured ? ' pricing-card-featured' : ''}`}>
@@ -511,9 +530,10 @@ function PricingCard({
           </li>
         ))}
       </ul>
-      <Link href={ctaHref} className={`pricing-cta${featured ? ' pricing-cta-featured' : ''}`}>
+      <Link href={ctaHref} className={`pricing-cta${featured ? ' pricing-cta-featured' : ''}`} onClick={onCtaClick}>
         {ctaLabel}
       </Link>
     </div>
   );
 }
+
