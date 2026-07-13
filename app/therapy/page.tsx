@@ -441,7 +441,7 @@ function TherapyInner() {
         )}
 
         <Card style={{ marginBottom: 0, marginTop: 14 }}>
-          <CardTitle icon="bulb">AI Insight</CardTitle>
+          <CardTitle icon="bulb">A Heart-to-Heart Reflection</CardTitle>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.7 }}>
             {results.ai_insight || results.insight}
           </div>
@@ -855,52 +855,52 @@ type VocalMetricsProps = {
 function VocalMetricsCard({ metrics }: VocalMetricsProps) {
   const statChips = [
     {
-      label: 'Avg Pitch',
+      label: 'Vocal Warmth',
       value: metrics.avg_pitch_hz > 0 ? `${metrics.avg_pitch_hz} Hz` : '—',
       icon: 'pulse',
     },
     {
-      label: 'Speech Rate',
+      label: 'Speaking Pace',
       value: metrics.speech_rate_wpm > 0 ? `${metrics.speech_rate_wpm} WPM` : '—',
       icon: 'time',
     },
     {
-      label: 'Pauses',
-      value: `${metrics.pause_count} (${metrics.pause_frequency})`,
+      label: 'Breathing Spaces',
+      value: `${metrics.pause_count} moments (${metrics.pause_frequency})`,
       icon: 'bulb',
     },
   ];
 
   const bars = [
     {
-      label: 'Pitch Variability',
+      label: 'Vocal Expression',
       value: metrics.pitch_variability,
       color: COLORS.blue,
       hint: metrics.pitch_variability < 25
-        ? 'Monotone / flat delivery'
+        ? 'Steady & grounded delivery'
         : metrics.pitch_variability < 55
-        ? 'Moderate expressiveness'
-        : 'Highly expressive / dynamic',
+        ? 'Balanced vocal melody'
+        : 'Richly expressive highs & lows',
     },
     {
-      label: 'Volume Consistency',
+      label: 'Flow Stability',
       value: metrics.volume_consistency,
       color: COLORS.green,
       hint: metrics.volume_consistency > 75
-        ? 'Steady, controlled volume'
+        ? 'Steady, reassuring presence'
         : metrics.volume_consistency > 45
-        ? 'Some volume fluctuation'
-        : 'Erratic volume changes',
+        ? 'Gentle variations in volume'
+        : 'Soft fades & breathing pauses',
     },
     {
-      label: 'Vocal Tension Index',
+      label: 'Ease vs Strain',
       value: metrics.jitter_shimmer_index,
       color: metrics.jitter_shimmer_index > 55 ? COLORS.danger : COLORS.blue,
       hint: metrics.jitter_shimmer_index < 25
-        ? 'Smooth, relaxed voice'
+        ? 'Relaxed & easy flow'
         : metrics.jitter_shimmer_index < 55
-        ? 'Mild vocal tension'
-        : 'Elevated tension / roughness',
+        ? 'Subtle holding of tension'
+        : 'Vocal holding / working harder',
     },
   ];
 
@@ -947,10 +947,10 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
               letterSpacing: '-0.2px',
             }}
           >
-            Vocal Signal Metrics
+            The Rhythm & Resonance of Your Voice
           </div>
           <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
-            Real measured data · signal-processed before AI analysis
+            These are the subtle frequencies, flow, and breathing patterns we heard in your recording
           </div>
         </div>
       </div>
