@@ -937,7 +937,7 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
         >
           <Icon name="mic" size={14} color={COLORS.blue} />
         </div>
-        <div>
+        {/* <div>
           <div
             style={{
               fontSize: 14,
@@ -952,11 +952,11 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
           <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
             These are the subtle frequencies, flow, and breathing patterns we heard in your recording
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Stat chips */}
-      <div
+      {/* <div
         style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(3, 1fr)',
@@ -999,10 +999,10 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
             </div>
           </div>
         ))}
-      </div>
+      </div> */}
 
       {/* Metric bars */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {bars.map((bar) => (
           <div key={bar.label}>
             <div
@@ -1038,7 +1038,7 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
             </div>
           </div>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }
