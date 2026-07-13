@@ -375,7 +375,7 @@ function TherapyInner() {
             {(results.vocal_summary || results.emotional_mirror) && (
               <div style={{ paddingTop: results.transcript ? 14 : 0, borderTop: results.transcript ? `1px solid ${COLORS.cardBorder}` : 'none' }}>
                 <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                  How your voice sounded
+                  How your voice felt
                 </div>
                 <div style={{ fontSize: 14, color: COLORS.textSecondary, lineHeight: 1.6 }}>
                   {results.vocal_summary || results.emotional_mirror}
