@@ -206,7 +206,16 @@ function TherapyInner() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      setConversationMessages((prev) => [...prev, assistantMsg]);
+      setConversationMessages((prev) => {
+        const nextMsgs = [...prev, assistantMsg];
+        if (isFinalTurn) {
+          // System automatically ends chat and generates full results after 1.8s
+          setTimeout(() => {
+            handleFinishDeepConversation(nextMsgs);
+          }, 1800);
+        }
+        return nextMsgs;
+      });
       setIsSpeakingId(null);
     } catch (err) {
       console.warn('[therapy] Therapist reply error:', err);
@@ -265,18 +274,20 @@ function TherapyInner() {
     }
   };
 
-  const handleFinishDeepConversation = async () => {
+  const handleFinishDeepConversation = async (explicitMessages?: ConversationMessage[]) => {
     if (!savedAudio || isSubmittingDeep) return;
     setIsSubmittingDeep(true);
     stopDespina();
     setIsSpeakingId(null);
 
-    const questions = conversationMessages
+    const msgsToUse = explicitMessages || conversationMessages;
+
+    const questions = msgsToUse
       .filter((m) => m.role === 'assistant')
       .map((m) => m.content)
       .join(' | ');
 
-    const userAnswers = conversationMessages
+    const userAnswers = msgsToUse
       .filter((m) => m.role === 'user')
       .map((m) => m.content)
       .join(' | ');
@@ -950,7 +961,7 @@ function TherapyInner() {
 
   if (phase === 'getting_question') {
     return (
-      <AppShell title="Reflect — Deep Understanding" subtitle="Therapist Despina is listening">
+      <AppShell title="Reflect — Deep Understanding" subtitle="Therapist Elena is listening">
         <div
           style={{
             minHeight: '60vh',
@@ -964,7 +975,7 @@ function TherapyInner() {
             <Logo size={38} />
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, marginTop: 32, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
-            Despina is tuning into your voice...
+            Elena is tuning into your voice...
           </div>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
             Preparing 1 targeted follow-up question to start your session
@@ -976,7 +987,7 @@ function TherapyInner() {
 
   if (phase === 'deep_conversation') {
     return (
-      <AppShell title="Reflect — Deep Understanding" subtitle="Interactive conversation with Despina">
+      <AppShell title="Reflect — Deep Understanding" subtitle="Interactive conversation with Elena">
         <div
           style={{
             background: COLORS.card,
@@ -1020,24 +1031,10 @@ function TherapyInner() {
                 }}
               >
                 🧠
-                {isSpeakingId && (
-                  <span
-                    style={{
-                      position: 'absolute',
-                      bottom: -2,
-                      right: -2,
-                      width: 12,
-                      height: 12,
-                      borderRadius: 6,
-                      background: COLORS.green,
-                      border: `2px solid ${COLORS.card}`,
-                    }}
-                  />
-                )}
               </div>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
-                  Despina — AI Therapist
+                  Elena — AI Therapist
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.blue, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>💬 Text-Based AI Therapist</span>
@@ -1049,100 +1046,40 @@ function TherapyInner() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              {/* Interaction Mode Toggle */}
-              <div
-                style={{
-                  display: 'flex',
-                  background: COLORS.surface,
-                  borderRadius: 12,
-                  padding: 3,
-                  border: `1px solid ${COLORS.cardBorder}`,
-                }}
-              >
-                <button
-                  onClick={() => setInteractionMode('live')}
-                  style={{
-                    border: 'none',
-                    borderRadius: 9,
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: interactionMode === 'live' ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})` : 'transparent',
-                    color: interactionMode === 'live' ? COLORS.white : COLORS.textSecondary,
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  🎙️ Live Call
-                </button>
-                <button
-                  onClick={() => setInteractionMode('chat')}
-                  style={{
-                    border: 'none',
-                    borderRadius: 9,
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    background: interactionMode === 'chat' ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})` : 'transparent',
-                    color: interactionMode === 'chat' ? COLORS.white : COLORS.textSecondary,
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  💬 Chat
-                </button>
-              </div>
-
-              {/* Finish CTA */}
-              <button
-                onClick={handleFinishDeepConversation}
-                disabled={isSubmittingDeep}
-                style={{
-                  background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
-                  color: COLORS.white,
-                  border: 'none',
-                  borderRadius: 14,
-                  padding: '10px 18px',
-                  fontSize: 13,
-                  fontWeight: 800,
-                  fontFamily: 'var(--font-syne)',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {isSubmittingDeep ? 'Analyzing Session...' : 'Finish & See Full Analysis →'}
-              </button>
-            </div>
+            {/* Finish CTA */}
+            <button
+              onClick={() => handleFinishDeepConversation()}
+              disabled={isSubmittingDeep}
+              style={{
+                background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                color: COLORS.white,
+                border: 'none',
+                borderRadius: 14,
+                padding: '10px 18px',
+                fontSize: 13,
+                fontWeight: 800,
+                fontFamily: 'var(--font-syne)',
+                cursor: 'pointer',
+                boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {isSubmittingDeep ? 'Analyzing Session...' : 'Finish & See Full Analysis →'}
+            </button>
           </div>
 
-          {interactionMode === 'live' ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 0' }}>
-              <LiveVoiceChat
-                systemInstructionText={
-                  deepQuestion
-                    ? `You are Despina, a real, warm, empathetic AI therapist companion having an authentic live phone call with a friend. ` +
-                      `Start by gently asking this question or following up on it: "${deepQuestion}". ` +
-                      `Speak casually with human warmth, natural rhythm, and natural conversational pauses. Keep responses concise (1 to 2 sentences max) so it feels like a real dialogue. Do NOT read text formally or act like an AI assistant.`
-                    : undefined
-                }
-              />
-            </div>
-          ) : (
-            <>
-              {/* Conversation Chat Stream */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: 'auto',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 16,
-                  paddingRight: 4,
-                  marginBottom: 20,
-                }}
-              >
+          {/* Conversation Chat Stream */}
+          <div
+            style={{
+              flex: 1,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 16,
+              paddingRight: 4,
+              marginBottom: 20,
+            }}
+          >
             {conversationMessages.map((msg) => {
               const isAssistant = msg.role === 'assistant';
               const isSpeaking = isSpeakingId === msg.id;
@@ -1183,7 +1120,7 @@ function TherapyInner() {
                         }}
                       >
                         <span style={{ fontSize: 11, fontWeight: 800, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                          Despina
+                          Elena
                         </span>
                       </div>
                     )}
@@ -1212,7 +1149,7 @@ function TherapyInner() {
                 }}
               >
                 <div className="animate-pulse-soft" style={{ fontSize: 14 }}>🧠</div>
-                <span>Despina is listening and reflecting...</span>
+                <span>Elena is listening and reflecting...</span>
               </div>
             )}
             <div ref={chatEndRef} />
@@ -1238,7 +1175,7 @@ function TherapyInner() {
               >
                 <div>
                   <strong style={{ color: COLORS.blue, display: 'block' }}>✨ Session Complete (3/3 Questions Answered)</strong>
-                  <span style={{ fontSize: 12, color: COLORS.textSecondary }}>Despina has gathered full emotional clarity for your session analysis.</span>
+                  <span style={{ fontSize: 12, color: COLORS.textSecondary }}>Elena has gathered full emotional clarity for your session analysis. Generating results...</span>
                 </div>
               </div>
             )}
@@ -1287,10 +1224,10 @@ function TherapyInner() {
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendUserMessage()}
               placeholder={
                 conversationMessages.filter((m) => m.role === 'assistant').length >= 3 && conversationMessages.filter((m) => m.role === 'user').length >= 3
-                  ? '3/3 Questions completed — Click Finish & See Full Analysis above →'
+                  ? '3/3 Questions completed — Generating full results...'
                   : isListeningVoice
                   ? 'Listening... Speak now...'
-                  : 'Type or speak your answer to Despina...'
+                  : 'Type or speak your answer to Elena...'
               }
               disabled={
                 isTherapistThinking ||
@@ -1331,8 +1268,6 @@ function TherapyInner() {
               <Icon name="send" size={16} color={COLORS.white} />
             </button>
           </div>
-          </>
-          )}
         </div>
       </AppShell>
     );
