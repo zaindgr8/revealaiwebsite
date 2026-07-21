@@ -3,6 +3,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import type { User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { getProfile, type Profile } from './profile';
+import { getSubscriptionStatus, type SubscriptionStatus } from './subscription';
 
 type AuthCtx = {
   user: User | null;
@@ -10,6 +11,9 @@ type AuthCtx = {
   setProfile: React.Dispatch<React.SetStateAction<Profile | null>>;
   refreshProfile: () => void;
   loading: boolean;
+  subStatus: SubscriptionStatus | null;
+  subLoading: boolean;
+  refreshSubStatus: () => void;
 };
 
 const AuthContext = createContext<AuthCtx>({
@@ -18,6 +22,9 @@ const AuthContext = createContext<AuthCtx>({
   setProfile: () => {},
   refreshProfile: () => {},
   loading: true,
+  subStatus: null,
+  subLoading: true,
+  refreshSubStatus: () => {},
 });
 
 /**
@@ -59,6 +66,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [subStatus, setSubStatus] = useState<SubscriptionStatus | null>(null);
+  const [subLoading, setSubLoading] = useState(true);
 
   const fetchProfileData = useCallback(async (userId: string) => {
     try {
@@ -71,14 +80,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const fetchSubStatus = useCallback(async () => {
+    setSubLoading(true);
+    try {
+      const s = await getSubscriptionStatus();
+      setSubStatus(s);
+    } catch {
+      // Fail open — don't block the user
+      setSubStatus(null);
+    } finally {
+      setSubLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       const sessionUser = data.session?.user ?? null;
       setUser(sessionUser);
       if (sessionUser) {
-        fetchProfileData(sessionUser.id).finally(() => setLoading(false));
+        // Fetch profile and subscription in parallel — only once on mount
+        Promise.all([
+          fetchProfileData(sessionUser.id),
+          fetchSubStatus(),
+        ]).finally(() => setLoading(false));
       } else {
         setLoading(false);
+        setSubLoading(false);
       }
     });
 
@@ -87,20 +114,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(sessionUser);
       if (sessionUser) {
         fetchProfileData(sessionUser.id);
+        // Re-fetch subscription only on fresh sign-in (not on every auth refresh)
+        if (_event === 'SIGNED_IN') {
+          fetchSubStatus();
+        }
       } else {
         setProfile(null);
+        setSubStatus(null);
+        setSubLoading(false);
       }
     });
 
     return () => sub.subscription.unsubscribe();
-  }, [fetchProfileData]);
+  }, [fetchProfileData, fetchSubStatus]);
 
   const refreshProfile = useCallback(() => {
     if (user?.id) fetchProfileData(user.id);
   }, [user?.id, fetchProfileData]);
 
+  const refreshSubStatus = useCallback(() => {
+    fetchSubStatus();
+  }, [fetchSubStatus]);
+
   return (
-    <AuthContext.Provider value={{ user, profile, setProfile, refreshProfile, loading }}>
+    <AuthContext.Provider value={{ user, profile, setProfile, refreshProfile, loading, subStatus, subLoading, refreshSubStatus }}>
       {children}
     </AuthContext.Provider>
   );

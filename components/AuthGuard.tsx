@@ -1,19 +1,16 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { getSubscriptionStatus, type SubscriptionStatus } from '@/lib/subscription';
 import { COLORS } from '@/lib/theme';
 
 // Pages that are allowed even without a subscription (so paywall doesn't loop)
 const PAYMENT_PATHS = ['/payment'];
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, subStatus, subLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
-  const [subStatus, setSubStatus] = useState<SubscriptionStatus | null>(null);
-  const [subLoading, setSubLoading] = useState(true);
 
   // Redirect unauthenticated users to landing
   useEffect(() => {
@@ -22,33 +19,19 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     }
   }, [user, loading, router]);
 
-  // Check subscription status once user is known
+  // Redirect if subscription expired — only after both auth + sub are loaded
   useEffect(() => {
-    if (!user || loading) return;
-    if (PAYMENT_PATHS.some((p) => pathname?.startsWith(p))) {
-      setSubLoading(false);
-      return;
+    if (loading || subLoading) return;
+    if (!user) return;
+    if (PAYMENT_PATHS.some((p) => pathname?.startsWith(p))) return;
+    if (subStatus && !subStatus.canUseApp) {
+      router.replace('/payment');
     }
+  }, [user, loading, subStatus, subLoading, pathname, router]);
 
-    getSubscriptionStatus()
-      .then((s) => {
-        setSubStatus(s);
-        if (!s.canUseApp) {
-          // Trial expired or out of minutes → go to paywall
-          router.replace('/payment');
-        }
-      })
-      .catch(() => {
-        // If subscription check fails (e.g., DB migration not run yet),
-        // fail OPEN — allow the user through. Don't lock them out.
-        setSubStatus(null);
-      })
-      .finally(() => setSubLoading(false));
-  }, [user, loading, pathname, router]);
-
-  const isLoading = loading || subLoading;
-
-  if (isLoading) {
+  // Only show spinner on initial app load (auth not yet resolved)
+  // Sub loading runs in parallel and doesn't block navigation
+  if (loading) {
     return (
       <div
         style={{
@@ -80,8 +63,9 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // If subStatus loaded and user can't use app, render nothing (redirect in flight)
-  if (subStatus && !subStatus.canUseApp) return null;
+  // If sub loaded and user can't use app, render nothing (redirect in flight)
+  if (!subLoading && subStatus && !subStatus.canUseApp) return null;
 
+  // Render children immediately — no spinner for subscription check on navigation
   return <>{children}</>;
 }

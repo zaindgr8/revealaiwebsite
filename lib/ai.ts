@@ -39,6 +39,10 @@ export type TherapySession = {
   ai_insight?: string;
   recommendations?: string[];
   todays_action?: string;
+  // Deep analysis fields
+  narrative_type?: 'past' | 'present' | 'future' | 'mixed';
+  readiness_score?: number | null;
+  readiness_note?: string | null;
 };
 
 export type AnalysisResult = Omit<TherapySession, 'id' | 'created_at'>;
@@ -129,18 +133,50 @@ export async function chatTherapy({
   return data.reply;
 }
 
+export async function askDeepQuestion({
+  audioBase64,
+  mimeType,
+  userContext,
+}: {
+  audioBase64: string;
+  mimeType: string;
+  userContext?: UserContext;
+}): Promise<string> {
+  const token = await getAuthToken();
+  const res = await fetch('/api/deep-question', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      audio_base64: audioBase64,
+      mime_type: mimeType,
+      user_context: userContext,
+    }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || 'Failed to get deep question');
+  if (data?.error) throw new Error(data.error);
+  return data.question;
+}
+
 export async function analyzeMood({
   audioBase64,
   mimeType,
   durationSeconds,
   userContext,
   acousticFeatures,
+  deepQuestion,
+  deepAnswer,
 }: {
   audioBase64: string;
   mimeType: string;
   durationSeconds: number;
   userContext?: UserContext;
   acousticFeatures?: AcousticFeatures;
+  deepQuestion?: string;
+  deepAnswer?: string;
 }): Promise<AnalysisResult> {
   const token = await getAuthToken();
   const res = await fetch('/api/analyze-mood', {
@@ -155,6 +191,8 @@ export async function analyzeMood({
       duration_seconds: durationSeconds,
       user_context: userContext,
       acoustic_features: acousticFeatures ?? null,
+      deep_question: deepQuestion,
+      deep_answer: deepAnswer,
     }),
   });
   const data = await res.json();

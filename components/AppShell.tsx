@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
@@ -13,10 +13,11 @@ type NavItem = { href: string; label: string; icon: string };
 
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
+  { href: '/live-call', label: 'Live Call', icon: 'mic' },
   { href: '/therapy', label: 'Reflect', icon: 'pulse' },
-  { href: '/chat', label: 'AI Chat', icon: 'chat' },
-  { href: '/trends', label: 'Trends', icon: 'trending-up' },
-  { href: '/history', label: 'History', icon: 'time' },
+  // { href: '/chat', label: 'AI Chat', icon: 'chat' },
+  { href: '/journey', label: 'Journey', icon: 'trending-up' },
+  { href: '/sessions', label: 'Sessions', icon: 'time' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -357,18 +358,29 @@ function SidebarItem({
   onClick: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const bg = active
+  const [pending, setPending] = useState(false);
+
+  // Clear pending once pathname settles on this item
+  useEffect(() => {
+    if (active) setPending(false);
+  }, [active]);
+
+  const isActive = active || pending;
+  const bg = isActive
     ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.1))'
     : hover
     ? COLORS.cardBorder
     : 'transparent';
-  const color = active || hover ? COLORS.textPrimary : COLORS.textSecondary;
+  const color = isActive || hover ? COLORS.textPrimary : COLORS.textSecondary;
 
   return (
     <Link
       href={href}
       prefetch
-      onClick={onClick}
+      onClick={() => {
+        setPending(true);
+        onClick();
+      }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
@@ -379,7 +391,7 @@ function SidebarItem({
         padding: '10px 12px',
         borderRadius: 12,
         background: bg,
-        border: active ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent',
+        border: isActive ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent',
         color,
         fontSize: 14,
         fontWeight: 600,

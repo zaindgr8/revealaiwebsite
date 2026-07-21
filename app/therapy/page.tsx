@@ -22,18 +22,31 @@ import { useAudioRecorder, type RecordingResult } from '@/hooks/useAudioRecorder
 import { extractAcousticFeatures, type AcousticFeatures, type SegmentEmotion } from '@/lib/audioFeatures';
 import {
   analyzeMood,
+  askDeepQuestion,
   buildUserContext,
+  chatTherapy,
   getRecentTherapySessions,
   updateStreak,
   type AnalysisResult,
   type TherapySession,
   type StreakData,
+  type UserContext,
 } from '@/lib/ai';
+import { speakDespina, stopDespina } from '@/lib/despinaVoice';
+import LiveVoiceChat from '@/components/LiveVoiceChat';
 import { deductSessionMinutes } from '@/lib/subscription';
 
 const PACE_LABEL: Record<string, string> = { Slow: 'Slow', Normal: 'Normal', Fast: 'Fast' };
 
-type Phase = 'record' | 'analyzing' | 'results';
+type Phase = 'record' | 'getting_question' | 'deep_conversation' | 'analyzing' | 'results';
+type ReflectMode = 'quick' | 'deep';
+
+type ConversationMessage = {
+  id: string;
+  role: 'assistant' | 'user';
+  content: string;
+  timestamp: string;
+};
 
 function labelForMood(score: number) {
   if (score >= 80) return 'Great';
@@ -43,26 +56,242 @@ function labelForMood(score: number) {
   return 'Low';
 }
 
+const SESSION_STORAGE_KEY = 'reveal_last_session';
+
+type PersistedSession = {
+  results: AnalysisResult;
+  waveEnvelope: number[];
+  segmentEmotions: SegmentEmotion[];
+  audioDuration: number;
+  streak: StreakData | null;
+};
+
+function saveSession(data: PersistedSession) {
+  try {
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // Storage full or unavailable — fail silently
+  }
+}
+
+function loadSession(): PersistedSession | null {
+  try {
+    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as PersistedSession) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  try {
+    localStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+}
+
 function TherapyInner() {
   const router = useRouter();
-  const [phase, setPhase] = useState<Phase>('record');
-  const [results, setResults] = useState<AnalysisResult | null>(null);
+
+  // Restore last session from localStorage on first render
+  const savedSession = useRef<PersistedSession | null>(null);
+  if (savedSession.current === null) {
+    savedSession.current = loadSession();
+  }
+  const saved = savedSession.current;
+
+  const [phase, setPhase] = useState<Phase>(saved ? 'results' : 'record');
+  const [results, setResults] = useState<AnalysisResult | null>(saved?.results ?? null);
   const [analyzeErr, setAnalyzeErr] = useState<string | null>(null);
   const [previousSession, setPreviousSession] = useState<TherapySession | null>(null);
   const recentSessionsRef = useRef<TherapySession[]>([]);
-  // Phase 2: audio playback state
+  // Phase 2: audio playback state (blob URL cannot be restored after navigation)
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [waveEnvelope, setWaveEnvelope] = useState<number[]>([]);
-  const [segmentEmotions, setSegmentEmotions] = useState<SegmentEmotion[]>([]);
-  const [audioDuration, setAudioDuration] = useState(0);
+  const [waveEnvelope, setWaveEnvelope] = useState<number[]>(saved?.waveEnvelope ?? []);
+  const [segmentEmotions, setSegmentEmotions] = useState<SegmentEmotion[]>(saved?.segmentEmotions ?? []);
+  const [audioDuration, setAudioDuration] = useState(saved?.audioDuration ?? 0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
   // Phase 3: streak + trend
-  const [streak, setStreak] = useState<StreakData | null>(null);
+  const [streak, setStreak] = useState<StreakData | null>(saved?.streak ?? null);
   // Phase 4: Shareable Card
   const shareTriggerRef = useRef<HTMLButtonElement | null>(null);
   // Subscription: top-up modal
   const [showTopUpBanner, setShowTopUpBanner] = useState(false);
+  // Mode Toggle state ('quick' or 'deep')
+  const [reflectMode, setReflectMode] = useState<ReflectMode>('quick');
+  const [interactionMode, setInteractionMode] = useState<'live' | 'chat'>('chat');
+  // Deep Understanding conversation state
+  const [deepQuestion, setDeepQuestion] = useState<string | null>(null);
+  const [savedAudio, setSavedAudio] = useState<RecordingResult | null>(null);
+  const [savedAcoustic, setSavedAcoustic] = useState<AcousticFeatures | undefined>(undefined);
+  const [isSubmittingDeep, setIsSubmittingDeep] = useState(false);
+
+  // Multi-turn conversation state
+  const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [chatInputText, setChatInputText] = useState('');
+  const [isTherapistThinking, setIsTherapistThinking] = useState(false);
+  const [isSpeakingId, setIsSpeakingId] = useState<string | null>(null);
+  const [isListeningVoice, setIsListeningVoice] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const recognitionRef = useRef<any>(null);
+
+  // Auto-scroll chat to latest message
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [conversationMessages, isTherapistThinking]);
+
+  // Clean up speech synthesis on unmount
+  useEffect(() => {
+    return () => {
+      stopDespina();
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
+    };
+  }, []);
+
+  const playMessageVoice = (id: string, text: string) => {
+    if (isSpeakingId === id) {
+      stopDespina();
+      setIsSpeakingId(null);
+    } else {
+      setIsSpeakingId(id);
+      speakDespina(text, () => setIsSpeakingId(null));
+    }
+  };
+
+  const handleSendUserMessage = async (overrideText?: string) => {
+    const textToSend = (overrideText ?? chatInputText).trim();
+    if (!textToSend || isTherapistThinking) return;
+
+    const userMsgId = `user-${Date.now()}`;
+    const userMsg: ConversationMessage = {
+      id: userMsgId,
+      role: 'user',
+      content: textToSend,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const updatedMessages = [...conversationMessages, userMsg];
+    setConversationMessages(updatedMessages);
+    setChatInputText('');
+    setIsTherapistThinking(true);
+    stopDespina();
+    setIsSpeakingId(null);
+
+    try {
+      const apiMessages = updatedMessages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      const replyText = await chatTherapy({
+        messages: apiMessages,
+        context: {
+          detected_mode: 'reflective',
+        },
+      });
+
+      const assistantMsgId = `assistant-${Date.now()}`;
+      const assistantMsg: ConversationMessage = {
+        id: assistantMsgId,
+        role: 'assistant',
+        content: replyText,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setConversationMessages((prev) => [...prev, assistantMsg]);
+      setIsSpeakingId(null);
+    } catch (err) {
+      console.warn('[therapy] Therapist reply error:', err);
+    } finally {
+      setIsTherapistThinking(false);
+    }
+  };
+
+  const toggleVoiceDictation = () => {
+    if (typeof window === 'undefined') return;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert('Voice dictation is not supported by your browser. Please type your response below.');
+      return;
+    }
+
+    if (isListeningVoice) {
+      if (recognitionRef.current) {
+        try { recognitionRef.current.stop(); } catch {}
+      }
+      setIsListeningVoice(false);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListeningVoice(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results)
+          .map((result: any) => result[0].transcript)
+          .join('');
+        setChatInputText(transcript);
+      };
+
+      recognition.onerror = () => {
+        setIsListeningVoice(false);
+      };
+
+      recognition.onend = () => {
+        setIsListeningVoice(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (e) {
+      console.warn('Speech recognition start failed:', e);
+      setIsListeningVoice(false);
+    }
+  };
+
+  const handleFinishDeepConversation = async () => {
+    if (!savedAudio || isSubmittingDeep) return;
+    setIsSubmittingDeep(true);
+    stopDespina();
+    setIsSpeakingId(null);
+
+    const questions = conversationMessages
+      .filter((m) => m.role === 'assistant')
+      .map((m) => m.content)
+      .join(' | ');
+
+    const userAnswers = conversationMessages
+      .filter((m) => m.role === 'user')
+      .map((m) => m.content)
+      .join(' | ');
+
+    try {
+      await runFullAnalysis(
+        savedAudio,
+        savedAcoustic,
+        undefined,
+        questions || deepQuestion || undefined,
+        userAnswers || 'User completed deep conversational session'
+      );
+    } catch (e) {
+      setAnalyzeErr((e as Error).message || 'Analysis failed.');
+      setPhase('record');
+    } finally {
+      setIsSubmittingDeep(false);
+    }
+  };
 
   // Pre-load recent history once so we can pass context to analyze + show comparison.
   useEffect(() => {
@@ -76,12 +305,57 @@ function TherapyInner() {
       });
   }, []);
 
+  const runFullAnalysis = useCallback(
+    async (
+      audio: RecordingResult,
+      acousticFeatures?: AcousticFeatures,
+      userContext?: UserContext,
+      q?: string,
+      ans?: string
+    ) => {
+      setPhase('analyzing');
+      const uCtx = userContext ?? buildUserContext(recentSessionsRef.current);
+
+      const data = await analyzeMood({
+        audioBase64: audio.base64,
+        mimeType: audio.mimeType,
+        durationSeconds: audio.durationSeconds,
+        userContext: uCtx,
+        acousticFeatures,
+        deepQuestion: q,
+        deepAnswer: ans,
+      });
+      setResults(data);
+      setPhase('results');
+
+      let updatedStreak: StreakData | null = null;
+      try {
+        updatedStreak = await updateStreak();
+        setStreak(updatedStreak);
+      } catch {}
+
+      saveSession({
+        results: data,
+        waveEnvelope: acousticFeatures?.waveform_envelope ?? [],
+        segmentEmotions: acousticFeatures?.segment_emotions ?? [],
+        audioDuration: acousticFeatures?.duration_seconds ?? audio.durationSeconds,
+        streak: updatedStreak,
+      });
+
+      try {
+        const deductResult = await deductSessionMinutes(audio.durationSeconds || 60);
+        if (deductResult.needsTopUp) {
+          setShowTopUpBanner(true);
+        }
+      } catch {}
+    },
+    []
+  );
+
   const processAudio = useCallback(
     async (audio: RecordingResult | null) => {
       if (!audio) return;
-      setPhase('analyzing');
 
-      // Revoke previous blob URL
       if (blobUrlRef.current) {
         URL.revokeObjectURL(blobUrlRef.current);
         blobUrlRef.current = null;
@@ -90,11 +364,9 @@ function TherapyInner() {
       try {
         const userContext = buildUserContext(recentSessionsRef.current);
 
-        // Extract real acoustic features client-side BEFORE calling the LLM.
         let acousticFeatures: AcousticFeatures | undefined;
         try {
           acousticFeatures = await extractAcousticFeatures(audio.blob);
-          // Phase 2: store waveform data for playback UI
           if (acousticFeatures) {
             setWaveEnvelope(acousticFeatures.waveform_envelope);
             setSegmentEmotions(acousticFeatures.segment_emotions);
@@ -104,45 +376,48 @@ function TherapyInner() {
           console.warn('[therapy] Acoustic extraction failed:', aErr);
         }
 
-        // Create blob URL for audio playback
         const url = URL.createObjectURL(audio.blob);
         blobUrlRef.current = url;
         setBlobUrl(url);
 
-        const data = await analyzeMood({
-          audioBase64: audio.base64,
-          mimeType: audio.mimeType,
-          durationSeconds: audio.durationSeconds,
-          userContext,
-          acousticFeatures,
-        });
-        setResults(data);
-        setPhase('results');
+        // Deep Understanding Mode: Therapist asks initial deep question and enters multi-turn conversation
+        if (reflectMode === 'deep') {
+          setSavedAudio(audio);
+          setSavedAcoustic(acousticFeatures);
+          setPhase('getting_question');
 
-        // Phase 3: update streak (non-fatal)
-        try {
-          const s = await updateStreak();
-          setStreak(s);
-        } catch {
-          // Streak update failed — streak badge just won't show
-        }
+          try {
+            const question = await askDeepQuestion({
+              audioBase64: audio.base64,
+              mimeType: audio.mimeType,
+              userContext,
+            });
 
-        // Deduct session minutes from subscription (non-fatal, skipped during trial)
-        try {
-          const deductResult = await deductSessionMinutes(audio.durationSeconds || 60);
-          if (deductResult.needsTopUp) {
-            setShowTopUpBanner(true);
+            const initialMsg: ConversationMessage = {
+              id: 'msg-init-1',
+              role: 'assistant',
+              content: question,
+              timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            };
+
+            setDeepQuestion(question);
+            setConversationMessages([initialMsg]);
+            setPhase('deep_conversation');
+            setIsSpeakingId(null);
+          } catch (qErr) {
+            console.warn('[therapy] Deep question failed, continuing to direct analysis:', qErr);
+            await runFullAnalysis(audio, acousticFeatures, userContext);
           }
-        } catch {
-          // Non-fatal — don't block session results
+          return;
         }
+
+        await runFullAnalysis(audio, acousticFeatures, userContext);
       } catch (e) {
         setAnalyzeErr((e as Error).message || 'Analysis failed.');
         setPhase('record');
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [reflectMode, runFullAnalysis]
   );
 
   // Cleanup blob URL on unmount
@@ -177,8 +452,9 @@ function TherapyInner() {
     await processAudio(audio);
   };
 
-  // Reset to record — revoke blob
+  // Reset to record — revoke blob and clear persisted session
   const handleNewRecording = () => {
+    stopDespina();
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
       blobUrlRef.current = null;
@@ -186,6 +462,12 @@ function TherapyInner() {
     setBlobUrl(null);
     setWaveEnvelope([]);
     setSegmentEmotions([]);
+    setResults(null);
+    setDeepQuestion(null);
+    setConversationMessages([]);
+    setSavedAudio(null);
+    setSavedAcoustic(undefined);
+    clearSession();
     setPhase('record');
   };
 
@@ -193,9 +475,7 @@ function TherapyInner() {
     const moodLabel = labelForMood(results.mood_score);
     return (
       <AppShell title="Analysis Results" subtitle="Your voice, decoded">
-        <MedicalDisclaimer />
-
-        {/* ── Top-Up Banner — shown when minutes run out ── */}
+        {/* -- Top-Up Banner — shown when minutes run out -- */}
         {showTopUpBanner && (
           <div
             style={{
@@ -282,7 +562,7 @@ function TherapyInner() {
           </div>
         </div>
 
-        {/* ── Trend Delta Banner ── */}
+        {/* -- Trend Delta Banner -- */}
         {(() => {
           const currentMood = results.mood_score;
           const previousMood = previousSession?.mood_score;
@@ -319,7 +599,7 @@ function TherapyInner() {
           );
         })()}
 
-        {/* ── Emotion-colored waveform player ────────────────────────── */}
+        {/* -- Emotion-colored waveform player -------------------------- */}
         {blobUrl && waveEnvelope.length > 0 && (
           <WaveformPlayer
             blobUrl={blobUrl}
@@ -330,7 +610,7 @@ function TherapyInner() {
           />
         )}
 
-        {/* ── Reveal Voice AI card (transcript + vocal summary) ──────────── */}
+        {/* -- Reveal Voice AI card (transcript + vocal summary) ------------ */}
         {(results.transcript || results.vocal_summary || results.emotional_mirror) && (
           <div
             style={{
@@ -421,8 +701,35 @@ function TherapyInner() {
           </Card>
         </Grid>
 
-        {/* ── Detected Mode badge ─────────────────────────────────── */}
+        {/* -- Detected Mode badge ----------------------------------- */}
         <DetectedModeBadge mode={results.detected_mode} />
+
+        {/* -- Narrative Type badge ----------------------------------- */}
+        {results.narrative_type && (() => {
+          const NARRATIVE_META: Record<string, { label: string; emoji: string; color: string; bg: string }> = {
+            past:    { label: 'Processing the past', emoji: '🌀', color: '#7C3AED', bg: 'rgba(139,92,246,0.06)' },
+            present: { label: 'How you feel right now', emoji: '🌿', color: '#16A34A', bg: 'rgba(16,163,74,0.06)' },
+            future:  { label: 'Looking ahead', emoji: '🔭', color: '#2563EB', bg: 'rgba(37,99,235,0.06)' },
+            mixed:   { label: 'Past, present & future', emoji: '✨', color: '#D97706', bg: 'rgba(245,158,11,0.06)' },
+          };
+          const meta = NARRATIVE_META[results.narrative_type!] ?? NARRATIVE_META.present;
+          return (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: meta.bg,
+              border: `1px solid ${meta.color}33`,
+              borderRadius: 14,
+              padding: '10px 16px',
+              marginTop: 10,
+            }}>
+              <span style={{ fontSize: 18 }}>{meta.emoji}</span>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: meta.color, textTransform: 'uppercase', letterSpacing: 0.8 }}>What you shared</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.textPrimary, marginTop: 1 }}>{meta.label}</div>
+              </div>
+            </div>
+          );
+        })()}
 
         {previousSession && (
           <div style={{ marginTop: 14 }}>
@@ -435,7 +742,7 @@ function TherapyInner() {
           recentSessions={recentSessionsRef.current}
         />
 
-        {/* ── Vocal Metrics card ────────────────────────────────────── */}
+        {/* -- Vocal Metrics card -------------------------------------- */}
         {results.vocal_metrics && (
           <VocalMetricsCard metrics={results.vocal_metrics} />
         )}
@@ -447,6 +754,39 @@ function TherapyInner() {
           </div>
         </Card>
         <div style={{ height: 14 }} />
+
+        {/* -- Readiness card (only for future/mixed narratives) ------- */}
+        {(results.narrative_type === 'future' || results.narrative_type === 'mixed') && results.readiness_score != null && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(37,99,235,0.04), rgba(14,165,233,0.06))',
+            border: '1px solid rgba(37,99,235,0.18)',
+            borderRadius: 18,
+            padding: '20px 20px 18px',
+            marginBottom: 14,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Readiness Check</div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>How ready does your voice say you are?</div>
+              </div>
+              <div style={{
+                width: 58, height: 58, borderRadius: '50%',
+                background: `conic-gradient(${results.readiness_score >= 70 ? COLORS.green : results.readiness_score >= 45 ? '#D97706' : COLORS.danger} ${results.readiness_score * 3.6}deg, rgba(17,17,24,0.08) 0deg)`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <div style={{ width: 44, height: 44, borderRadius: '50%', background: COLORS.card, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>{results.readiness_score}</span>
+                </div>
+              </div>
+            </div>
+            {results.readiness_note && (
+              <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.65, borderTop: `1px solid ${COLORS.cardBorder}`, paddingTop: 12 }}>
+                {results.readiness_note}
+              </div>
+            )}
+          </div>
+        )}
 
         <Grid cols={2} gap={14}>
           <Card style={{ marginBottom: 0 }}>
@@ -512,7 +852,7 @@ function TherapyInner() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
           {/* Primary CTA: Share Mood Card */}
-          <button
+          {/* <button
             ref={shareTriggerRef}
             style={{
               display: 'flex',
@@ -534,7 +874,7 @@ function TherapyInner() {
           >
             <Icon name="share" size={18} color={COLORS.white} />
             Share Mood Card
-          </button>
+          </button> */}
 
           {/* Secondary CTA buttons grid */}
           <Grid cols={2} gap={10}>
@@ -589,6 +929,10 @@ function TherapyInner() {
           </Grid>
         </div>
 
+        <div style={{ marginTop: 24 }}>
+          <MedicalDisclaimer />
+        </div>
+
         {/* Shareable Mood Card Engine */}
         <MoodCardExport
           moodScore={results.mood_score}
@@ -596,6 +940,375 @@ function TherapyInner() {
           insightLine={results.vocal_summary || results.ai_insight || ''}
           triggerRef={shareTriggerRef}
         />
+      </AppShell>
+    );
+  }
+
+  if (phase === 'getting_question') {
+    return (
+      <AppShell title="Reflect — Deep Understanding" subtitle="Therapist Despina is listening">
+        <div
+          style={{
+            minHeight: '60vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <div className="animate-pulse-soft">
+            <Logo size={38} />
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, marginTop: 32, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
+            Despina is tuning into your voice...
+          </div>
+          <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
+            Preparing 1 targeted follow-up question to start your session
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (phase === 'deep_conversation') {
+    return (
+      <AppShell title="Reflect — Deep Understanding" subtitle="Interactive conversation with Despina">
+        <div
+          style={{
+            background: COLORS.card,
+            border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: 24,
+            padding: '24px 20px',
+            maxWidth: 720,
+            margin: '0 auto',
+            display: 'flex',
+            flexDirection: 'column',
+            minHeight: 'calc(100vh - 160px)',
+          }}
+        >
+          {/* Header Bar */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: 16,
+              borderBottom: `1px solid ${COLORS.cardBorder}`,
+              marginBottom: 20,
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  background: 'linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.15))',
+                  border: '1.5px solid rgba(37,99,235,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 20,
+                  flexShrink: 0,
+                  position: 'relative',
+                }}
+              >
+                🧠
+                {isSpeakingId && (
+                  <span
+                    style={{
+                      position: 'absolute',
+                      bottom: -2,
+                      right: -2,
+                      width: 12,
+                      height: 12,
+                      borderRadius: 6,
+                      background: COLORS.green,
+                      border: `2px solid ${COLORS.card}`,
+                    }}
+                  />
+                )}
+              </div>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
+                  Despina — AI Therapist
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.blue, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span>💬 Text-Based AI Therapist</span>
+                  {isSpeakingId && <span style={{ fontSize: 11, opacity: 0.8 }}>(Speaking...)</span>}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* Interaction Mode Toggle */}
+              <div
+                style={{
+                  display: 'flex',
+                  background: COLORS.surface,
+                  borderRadius: 12,
+                  padding: 3,
+                  border: `1px solid ${COLORS.cardBorder}`,
+                }}
+              >
+                <button
+                  onClick={() => setInteractionMode('live')}
+                  style={{
+                    border: 'none',
+                    borderRadius: 9,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: interactionMode === 'live' ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})` : 'transparent',
+                    color: interactionMode === 'live' ? COLORS.white : COLORS.textSecondary,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  🎙️ Live Call
+                </button>
+                <button
+                  onClick={() => setInteractionMode('chat')}
+                  style={{
+                    border: 'none',
+                    borderRadius: 9,
+                    padding: '6px 12px',
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    background: interactionMode === 'chat' ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})` : 'transparent',
+                    color: interactionMode === 'chat' ? COLORS.white : COLORS.textSecondary,
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  💬 Chat
+                </button>
+              </div>
+
+              {/* Finish CTA */}
+              <button
+                onClick={handleFinishDeepConversation}
+                disabled={isSubmittingDeep}
+                style={{
+                  background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                  color: COLORS.white,
+                  border: 'none',
+                  borderRadius: 14,
+                  padding: '10px 18px',
+                  fontSize: 13,
+                  fontWeight: 800,
+                  fontFamily: 'var(--font-syne)',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {isSubmittingDeep ? 'Analyzing Session...' : 'Finish & See Full Analysis →'}
+              </button>
+            </div>
+          </div>
+
+          {interactionMode === 'live' ? (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '12px 0' }}>
+              <LiveVoiceChat
+                systemInstructionText={
+                  deepQuestion
+                    ? `You are Despina, a real, warm, empathetic AI therapist companion having an authentic live phone call with a friend. ` +
+                      `Start by gently asking this question or following up on it: "${deepQuestion}". ` +
+                      `Speak casually with human warmth, natural rhythm, and natural conversational pauses. Keep responses concise (1 to 2 sentences max) so it feels like a real dialogue. Do NOT read text formally or act like an AI assistant.`
+                    : undefined
+                }
+              />
+            </div>
+          ) : (
+            <>
+              {/* Conversation Chat Stream */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 16,
+                  paddingRight: 4,
+                  marginBottom: 20,
+                }}
+              >
+            {conversationMessages.map((msg) => {
+              const isAssistant = msg.role === 'assistant';
+              const isSpeaking = isSpeakingId === msg.id;
+
+              return (
+                <div
+                  key={msg.id}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: isAssistant ? 'flex-start' : 'flex-end',
+                    maxWidth: '85%',
+                    alignSelf: isAssistant ? 'flex-start' : 'flex-end',
+                  }}
+                >
+                  <div
+                    style={{
+                      background: isAssistant
+                        ? 'linear-gradient(135deg, rgba(37,99,235,0.06), rgba(14,165,233,0.08))'
+                        : `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                      border: isAssistant ? '1px solid rgba(37,99,235,0.18)' : 'none',
+                      color: isAssistant ? COLORS.textPrimary : COLORS.white,
+                      borderRadius: isAssistant ? '20px 20px 20px 6px' : '20px 20px 6px 20px',
+                      padding: '16px 20px',
+                      fontSize: 14.5,
+                      lineHeight: 1.6,
+                      boxShadow: isAssistant ? 'none' : '0 4px 14px rgba(37,99,235,0.18)',
+                    }}
+                  >
+                    {isAssistant && (
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          marginBottom: 8,
+                          gap: 8,
+                        }}
+                      >
+                        <span style={{ fontSize: 11, fontWeight: 800, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                          Despina
+                        </span>
+                        <button
+                          onClick={() => playMessageVoice(msg.id, msg.content)}
+                          style={{
+                            background: isSpeaking ? 'rgba(37,99,235,0.15)' : 'transparent',
+                            border: `1px solid ${isSpeaking ? COLORS.blue : 'rgba(37,99,235,0.3)'}`,
+                            borderRadius: 12,
+                            padding: '3px 8px',
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: COLORS.blue,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <span>{isSpeaking ? '⏹️ Stop' : '🔊 Listen'}</span>
+                        </button>
+                      </div>
+                    )}
+                    <div>{msg.content}</div>
+                  </div>
+                  <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 4, padding: '0 4px' }}>
+                    {msg.timestamp}
+                  </div>
+                </div>
+              );
+            })}
+
+            {isTherapistThinking && (
+              <div
+                style={{
+                  alignSelf: 'flex-start',
+                  background: 'rgba(37,99,235,0.06)',
+                  border: '1px solid rgba(37,99,235,0.18)',
+                  borderRadius: '20px 20px 20px 6px',
+                  padding: '12px 18px',
+                  fontSize: 13,
+                  color: COLORS.textSecondary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                }}
+              >
+                <div className="animate-pulse-soft" style={{ fontSize: 14 }}>🧠</div>
+                <span>Despina is listening and reflecting...</span>
+              </div>
+            )}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Chat Input Bar */}
+          <div
+            style={{
+              background: COLORS.background,
+              border: `1.5px solid ${COLORS.cardBorder}`,
+              borderRadius: 20,
+              padding: '8px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            {/* Mic Dictation Button */}
+            <button
+              onClick={toggleVoiceDictation}
+              title={isListeningVoice ? 'Stop dictation' : 'Speak your answer (Voice Dictation)'}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                border: isListeningVoice ? `2px solid ${COLORS.danger}` : `1px solid ${COLORS.cardBorder}`,
+                background: isListeningVoice ? 'rgba(239,68,68,0.12)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: isListeningVoice ? COLORS.danger : COLORS.textSecondary,
+                flexShrink: 0,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <Icon name={isListeningVoice ? 'stop' : 'mic'} size={18} color={isListeningVoice ? COLORS.danger : COLORS.textSecondary} />
+            </button>
+
+            {/* Input Field */}
+            <input
+              type="text"
+              value={chatInputText}
+              onChange={(e) => setChatInputText(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendUserMessage()}
+              placeholder={isListeningVoice ? 'Listening... Speak now...' : 'Type or speak your answer to Despina...'}
+              disabled={isTherapistThinking}
+              style={{
+                flex: 1,
+                border: 'none',
+                background: 'transparent',
+                outline: 'none',
+                fontSize: 14,
+                color: COLORS.textPrimary,
+                padding: '8px 4px',
+              }}
+            />
+
+            {/* Send Button */}
+            <button
+              onClick={() => handleSendUserMessage()}
+              disabled={!chatInputText.trim() || isTherapistThinking}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                border: 'none',
+                background: chatInputText.trim() && !isTherapistThinking
+                  ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`
+                  : COLORS.cardBorder,
+                color: COLORS.white,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: chatInputText.trim() && !isTherapistThinking ? 'pointer' : 'not-allowed',
+                flexShrink: 0,
+                transition: 'all 0.2s ease',
+              }}
+            >
+              <Icon name="send" size={16} color={COLORS.white} />
+            </button>
+          </div>
+          </>
+          )}
+        </div>
       </AppShell>
     );
   }
@@ -616,10 +1329,10 @@ function TherapyInner() {
             <Logo size={38} />
           </div>
           <div style={{ fontSize: 22, fontWeight: 700, color: COLORS.textPrimary, marginTop: 32, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
-            Analyzing your voice...
+            {reflectMode === 'deep' ? 'Synthesizing your deep session...' : 'Analyzing your voice...'}
           </div>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
-            Detecting tone, pace, energy &amp; emotions
+            {reflectMode === 'deep' ? 'Integrating your voice memo + therapist response' : 'Detecting tone, pace, energy & emotions'}
           </div>
         </div>
       </AppShell>
@@ -633,7 +1346,7 @@ function TherapyInner() {
           background: COLORS.card,
           border: `1px solid ${COLORS.cardBorder}`,
           borderRadius: 24,
-          padding: '52px 24px 44px',
+          padding: '40px 24px 44px',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -641,6 +1354,69 @@ function TherapyInner() {
           justifyContent: 'center',
         }}
       >
+        {/* Mode Selector Toggle */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            background: 'rgba(17,17,24,0.04)',
+            border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: 16,
+            padding: 4,
+            marginBottom: 28,
+            gap: 4,
+            maxWidth: 420,
+            width: '100%',
+          }}
+        >
+          <button
+            onClick={() => setReflectMode('quick')}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 12,
+              border: 'none',
+              background: reflectMode === 'quick' ? COLORS.card : 'transparent',
+              boxShadow: reflectMode === 'quick' ? '0 2px 8px rgba(0,0,0,0.06)' : 'none',
+              color: reflectMode === 'quick' ? COLORS.textPrimary : COLORS.textSecondary,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <span>⚡</span>
+            Quick Check-In
+          </button>
+          <button
+            onClick={() => setReflectMode('deep')}
+            style={{
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 12,
+              border: reflectMode === 'deep' ? '1px solid rgba(37,99,235,0.25)' : '1px solid transparent',
+              background: reflectMode === 'deep' ? 'linear-gradient(135deg, rgba(37,99,235,0.1), rgba(14,165,233,0.12))' : 'transparent',
+              boxShadow: reflectMode === 'deep' ? '0 2px 8px rgba(37,99,235,0.15)' : 'none',
+              color: reflectMode === 'deep' ? COLORS.blue : COLORS.textSecondary,
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 6,
+              transition: 'all 0.2s ease',
+            }}
+          >
+            <span>🧠</span>
+            Deep Understanding
+          </button>
+        </div>
+
         {/* Status text */}
         <div
           style={{
@@ -648,12 +1424,14 @@ function TherapyInner() {
             color: COLORS.textSecondary,
             textAlign: 'center',
             lineHeight: 1.65,
-            marginBottom: 48,
-            maxWidth: 400,
+            marginBottom: 36,
+            maxWidth: 440,
           }}
         >
           {isRecording ? (
             <>Speak freely — anything on your mind.<br />We&apos;ll stop automatically at 60 seconds.</>
+          ) : reflectMode === 'deep' ? (
+            <><strong>Deep Understanding Mode</strong><br />Record your voice memo. Once finished, AI Therapist will ask 1 deep targeted question before decoding your results.</>
           ) : (
             <>Talk about how you&apos;re feeling today.<br />Anything on your mind.</>
           )}
@@ -744,10 +1522,10 @@ function CardTitle({ children, icon }: { children: React.ReactNode; icon?: strin
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 // DetectedModeBadge — large, icon-led, screenshot-worthy mode display
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 const MODE_META: Record<string, { emoji: string; tagline: string; bg: string; border: string; text: string }> = {
   calm:       { emoji: '🌊', tagline: 'Grounded and at ease', bg: 'rgba(37,99,235,0.06)', border: 'rgba(37,99,235,0.2)', text: '#2563EB' },
   happy:      { emoji: '✨', tagline: 'High on life right now', bg: 'rgba(16,163,74,0.06)', border: 'rgba(16,163,74,0.25)', text: '#16A34A' },
@@ -836,10 +1614,10 @@ function DetectedModeBadge({ mode }: { mode: string }) {
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 // VocalMetricsCard — renders the real measured acoustic numbers
 
-// ─────────────────────────────────────────────────────────────────────────────
+// -----------------------------------------------------------------------------
 type VocalMetricsProps = {
   metrics: {
     avg_pitch_hz: number;
@@ -1041,7 +1819,8 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
     //   </div> */}
     // </div>
   // );
-// }
+  return null;
+}
 
 function InlineRow({ label, value }: { label: string; value: string }) {
 

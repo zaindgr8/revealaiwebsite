@@ -13,34 +13,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.replace(/^Bearer\s+/i, '');
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
     if (userError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const body = await req.json();
-    // durationSeconds from the session — convert to minutes (ceiling)
     const durationSeconds: number = body.durationSeconds ?? 60;
     const minutesToDeduct = Math.ceil(durationSeconds / 60);
 
-    // Get current profile
     const { data: profile, error: fetchError } = await supabaseAdmin
       .from('profiles')
       .select('subscription_status, subscription_minutes_remaining, total_minutes_used')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
-    if (fetchError) {
-      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+    if (fetchError || !profile) {
+      return NextResponse.json({ skipped: true, reason: 'Profile or columns unavailable' });
     }
 
-    // Only deduct if subscription is active (not during trial)
-    if (profile?.subscription_status !== 'active') {
+    if (profile.subscription_status !== 'active') {
       return NextResponse.json({ skipped: true, reason: 'Trial user — no deduction' });
     }
 
-    const currentMinutes = profile.subscription_minutes_remaining ?? 0;
+    const currentMinutes = profile.subscription_minutes_remaining ?? 150;
     const currentTotal = profile.total_minutes_used ?? 0;
     const newRemaining = Math.max(0, currentMinutes - minutesToDeduct);
     const newTotal = currentTotal + minutesToDeduct;
@@ -54,7 +51,7 @@ export async function POST(req: Request) {
       .eq('id', user.id);
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      return NextResponse.json({ skipped: true, reason: 'Update failed' });
     }
 
     return NextResponse.json({
@@ -63,7 +60,7 @@ export async function POST(req: Request) {
       totalMinutesUsed: newTotal,
       needsTopUp: newRemaining <= 0,
     });
-  } catch (err) {
-    return NextResponse.json({ error: String(err) }, { status: 500 });
+  } catch {
+    return NextResponse.json({ skipped: true, reason: 'Deduction error' });
   }
 }

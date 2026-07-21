@@ -1,0 +1,11 @@
+import { NextResponse } from 'next/server';
+
+export async function GET() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: 'GEMINI_API_KEY environment variable is missing' }, { status: 500 });
+  }
+
+  // Pass API key securely to frontend for Gemini Multimodal Live WebSocket connection
+  return NextResponse.json({ apiKey });
+}
