@@ -114,9 +114,11 @@ export async function getStreak(): Promise<StreakData | null> {
 export async function chatTherapy({
   messages,
   context,
+  isFinalTurn,
 }: {
   messages: ChatMessage[];
   context: Partial<AnalysisResult>;
+  isFinalTurn?: boolean;
 }): Promise<string> {
   const token = await getAuthToken();
   const res = await fetch('/api/chat-therapy', {
@@ -125,7 +127,7 @@ export async function chatTherapy({
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ messages, context }),
+    body: JSON.stringify({ messages, context, is_final_turn: isFinalTurn }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || 'Chat failed');

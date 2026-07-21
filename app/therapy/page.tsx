@@ -187,11 +187,15 @@ function TherapyInner() {
         content: m.content,
       }));
 
+      const assistantCount = conversationMessages.filter((m) => m.role === 'assistant').length;
+      const isFinalTurn = assistantCount >= 2; // Next assistant response will be 3rd (final)
+
       const replyText = await chatTherapy({
         messages: apiMessages,
         context: {
           detected_mode: 'reflective',
         },
+        isFinalTurn,
       });
 
       const assistantMsgId = `assistant-${Date.now()}`;
@@ -1035,9 +1039,12 @@ function TherapyInner() {
                 <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
                   Despina — AI Therapist
                 </div>
-                <div style={{ fontSize: 12, color: COLORS.blue, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <div style={{ fontSize: 12, color: COLORS.blue, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>💬 Text-Based AI Therapist</span>
-                  {isSpeakingId && <span style={{ fontSize: 11, opacity: 0.8 }}>(Speaking...)</span>}
+                  <span style={{ color: COLORS.textMuted }}>•</span>
+                  <span style={{ color: COLORS.textSecondary, fontWeight: 700 }}>
+                    Question {Math.min(conversationMessages.filter((m) => m.role === 'assistant').length, 3)} of 3
+                  </span>
                 </div>
               </div>
             </div>
@@ -1178,24 +1185,6 @@ function TherapyInner() {
                         <span style={{ fontSize: 11, fontWeight: 800, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8 }}>
                           Despina
                         </span>
-                        <button
-                          onClick={() => playMessageVoice(msg.id, msg.content)}
-                          style={{
-                            background: isSpeaking ? 'rgba(37,99,235,0.15)' : 'transparent',
-                            border: `1px solid ${isSpeaking ? COLORS.blue : 'rgba(37,99,235,0.3)'}`,
-                            borderRadius: 12,
-                            padding: '3px 8px',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            color: COLORS.blue,
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
-                        >
-                          <span>{isSpeaking ? '⏹️ Stop' : '🔊 Listen'}</span>
-                        </button>
                       </div>
                     )}
                     <div>{msg.content}</div>
@@ -1229,6 +1218,31 @@ function TherapyInner() {
             <div ref={chatEndRef} />
           </div>
 
+          {/* Completion Banner when 3 questions answered */}
+          {conversationMessages.filter((m) => m.role === 'assistant').length >= 3 &&
+            conversationMessages.filter((m) => m.role === 'user').length >= 3 && (
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, rgba(37,99,235,0.08), rgba(14,165,233,0.1))',
+                  border: '1px solid rgba(37,99,235,0.25)',
+                  borderRadius: 16,
+                  padding: '12px 16px',
+                  marginBottom: 14,
+                  fontSize: 13,
+                  color: COLORS.textPrimary,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <strong style={{ color: COLORS.blue, display: 'block' }}>✨ Session Complete (3/3 Questions Answered)</strong>
+                  <span style={{ fontSize: 12, color: COLORS.textSecondary }}>Despina has gathered full emotional clarity for your session analysis.</span>
+                </div>
+              </div>
+            )}
+
           {/* Chat Input Bar */}
           <div
             style={{
@@ -1239,11 +1253,13 @@ function TherapyInner() {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
+              opacity: conversationMessages.filter((m) => m.role === 'assistant').length >= 3 && conversationMessages.filter((m) => m.role === 'user').length >= 3 ? 0.6 : 1,
             }}
           >
             {/* Mic Dictation Button */}
             <button
               onClick={toggleVoiceDictation}
+              disabled={conversationMessages.filter((m) => m.role === 'assistant').length >= 3 && conversationMessages.filter((m) => m.role === 'user').length >= 3}
               title={isListeningVoice ? 'Stop dictation' : 'Speak your answer (Voice Dictation)'}
               style={{
                 width: 40,
@@ -1269,8 +1285,17 @@ function TherapyInner() {
               value={chatInputText}
               onChange={(e) => setChatInputText(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendUserMessage()}
-              placeholder={isListeningVoice ? 'Listening... Speak now...' : 'Type or speak your answer to Despina...'}
-              disabled={isTherapistThinking}
+              placeholder={
+                conversationMessages.filter((m) => m.role === 'assistant').length >= 3 && conversationMessages.filter((m) => m.role === 'user').length >= 3
+                  ? '3/3 Questions completed — Click Finish & See Full Analysis above →'
+                  : isListeningVoice
+                  ? 'Listening... Speak now...'
+                  : 'Type or speak your answer to Despina...'
+              }
+              disabled={
+                isTherapistThinking ||
+                (conversationMessages.filter((m) => m.role === 'assistant').length >= 3 && conversationMessages.filter((m) => m.role === 'user').length >= 3)
+              }
               style={{
                 flex: 1,
                 border: 'none',
