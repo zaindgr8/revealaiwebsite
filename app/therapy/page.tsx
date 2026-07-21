@@ -904,144 +904,144 @@ function VocalMetricsCard({ metrics }: VocalMetricsProps) {
     },
   ];
 
-  return (
-    <div
-      style={{
-        background: 'linear-gradient(135deg, rgba(14,165,233,0.05) 0%, rgba(99,102,241,0.05) 100%)',
-        border: `1px solid ${COLORS.cardBorder}`,
-        borderRadius: 18,
-        padding: 20,
-        marginTop: 14,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
-        <div
-          style={{
-            width: 28,
-            height: 28,
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.15))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
-          <Icon name="mic" size={14} color={COLORS.blue} />
-        </div>
-        {/* <div>
-          <div
-            style={{
-              fontSize: 14,
-              fontWeight: 700,
-              color: COLORS.textPrimary,
-              fontFamily: 'var(--font-syne)',
-              letterSpacing: '-0.2px',
-            }}
-          >
-            The Rhythm & Resonance of Your Voice
-          </div>
-          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
-            These are the subtle frequencies, flow, and breathing patterns we heard in your recording
-          </div>
-        </div> */}
-      </div>
+  // return (
+    // <div
+    //   style={{
+    //     background: 'linear-gradient(135deg, rgba(14,165,233,0.05) 0%, rgba(99,102,241,0.05) 100%)',
+    //     border: `1px solid ${COLORS.cardBorder}`,
+    //     borderRadius: 18,
+    //     padding: 20,
+    //     marginTop: 14,
+    //   }}
+    // >
+    //   {/* Header */}
+    //   <div
+    //     style={{
+    //       display: 'flex',
+    //       alignItems: 'center',
+    //       gap: 8,
+    //       marginBottom: 16,
+    //     }}
+    //   >
+    //     <div
+    //       style={{
+    //         width: 28,
+    //         height: 28,
+    //         borderRadius: 8,
+    //         background: 'linear-gradient(135deg, rgba(37,99,235,0.15), rgba(14,165,233,0.15))',
+    //         display: 'flex',
+    //         alignItems: 'center',
+    //         justifyContent: 'center',
+    //         flexShrink: 0,
+    //       }}
+    //     >
+    //       <Icon name="mic" size={14} color={COLORS.blue} />
+    //     </div>
+    //     {/* <div>
+    //       <div
+    //         style={{
+    //           fontSize: 14,
+    //           fontWeight: 700,
+    //           color: COLORS.textPrimary,
+    //           fontFamily: 'var(--font-syne)',
+    //           letterSpacing: '-0.2px',
+    //         }}
+    //       >
+    //         The Rhythm & Resonance of Your Voice
+    //       </div>
+    //       <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 1 }}>
+    //         These are the subtle frequencies, flow, and breathing patterns we heard in your recording
+    //       </div>
+    //     </div> */}
+    //   </div>
 
-      {/* Stat chips */}
-      {/* <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
-          gap: 8,
-          marginBottom: 16,
-        }}
-      >
-        {statChips.map((chip) => (
-          <div
-            key={chip.label}
-            style={{
-              background: 'rgba(17,17,24,0.03)',
-              border: `1px solid ${COLORS.cardBorder}`,
-              borderRadius: 12,
-              padding: '10px 12px',
-              textAlign: 'center',
-            }}
-          >
-            <div
-              style={{
-                fontSize: 11,
-                color: COLORS.textMuted,
-                marginBottom: 4,
-                textTransform: 'uppercase',
-                letterSpacing: 0.4,
-              }}
-            >
-              {chip.label}
-            </div>
-            <div
-              style={{
-                fontSize: 15,
-                fontWeight: 800,
-                color: COLORS.textPrimary,
-                fontFamily: 'var(--font-syne)',
-                letterSpacing: '-0.3px',
-              }}
-            >
-              {chip.value}
-            </div>
-          </div>
-        ))}
-      </div> */}
+    //   {/* Stat chips */}
+    //   {/* <div
+    //     style={{
+    //       display: 'grid',
+    //       gridTemplateColumns: 'repeat(3, 1fr)',
+    //       gap: 8,
+    //       marginBottom: 16,
+    //     }}
+    //   >
+    //     {statChips.map((chip) => (
+    //       <div
+    //         key={chip.label}
+    //         style={{
+    //           background: 'rgba(17,17,24,0.03)',
+    //           border: `1px solid ${COLORS.cardBorder}`,
+    //           borderRadius: 12,
+    //           padding: '10px 12px',
+    //           textAlign: 'center',
+    //         }}
+    //       >
+    //         <div
+    //           style={{
+    //             fontSize: 11,
+    //             color: COLORS.textMuted,
+    //             marginBottom: 4,
+    //             textTransform: 'uppercase',
+    //             letterSpacing: 0.4,
+    //           }}
+    //         >
+    //           {chip.label}
+    //         </div>
+    //         <div
+    //           style={{
+    //             fontSize: 15,
+    //             fontWeight: 800,
+    //             color: COLORS.textPrimary,
+    //             fontFamily: 'var(--font-syne)',
+    //             letterSpacing: '-0.3px',
+    //           }}
+    //         >
+    //           {chip.value}
+    //         </div>
+    //       </div>
+    //     ))}
+    //   </div> */}
 
-      {/* Metric bars */}
-      {/* <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {bars.map((bar) => (
-          <div key={bar.label}>
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: 5,
-              }}
-            >
-              <span style={{ fontSize: 12, color: COLORS.textSecondary, fontWeight: 600 }}>
-                {bar.label}
-              </span>
-              <span style={{ fontSize: 11, color: COLORS.textMuted }}>{bar.hint}</span>
-            </div>
-            <div
-              style={{
-                height: 6,
-                borderRadius: 3,
-                background: 'rgba(17,17,24,0.08)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${bar.value}%`,
-                  borderRadius: 3,
-                  background: bar.color,
-                  transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div> */}
-    </div>
-  );
-}
+    //   {/* Metric bars */}
+    //   {/* <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+    //     {bars.map((bar) => (
+    //       <div key={bar.label}>
+    //         <div
+    //           style={{
+    //             display: 'flex',
+    //             justifyContent: 'space-between',
+    //             alignItems: 'center',
+    //             marginBottom: 5,
+    //           }}
+    //         >
+    //           <span style={{ fontSize: 12, color: COLORS.textSecondary, fontWeight: 600 }}>
+    //             {bar.label}
+    //           </span>
+    //           <span style={{ fontSize: 11, color: COLORS.textMuted }}>{bar.hint}</span>
+    //         </div>
+    //         <div
+    //           style={{
+    //             height: 6,
+    //             borderRadius: 3,
+    //             background: 'rgba(17,17,24,0.08)',
+    //             overflow: 'hidden',
+    //           }}
+    //         >
+    //           <div
+    //             style={{
+    //               height: '100%',
+    //               width: `${bar.value}%`,
+    //               borderRadius: 3,
+    //               background: bar.color,
+    //               transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
+    //             }}
+    //           />
+    //         </div>
+    //       </div>
+    //     ))}
+    //   </div> */}
+    // </div>
+  // );
+// }
 
 function InlineRow({ label, value }: { label: string; value: string }) {
 
