@@ -1034,14 +1034,14 @@ function TherapyInner() {
               </div>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
-                  Elena — AI Therapist
+                  Elena — Your Safe Space
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.blue, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span>💬 Text-Based AI Therapist</span>
-                  <span style={{ color: COLORS.textMuted }}>•</span>
-                  <span style={{ color: COLORS.textSecondary, fontWeight: 700 }}>
+                  <span>Not just heard. Understood.</span>
+                  {/* <span style={{ color: COLORS.textMuted }}>•</span> */}
+                  {/* <span style={{ color: COLORS.textSecondary, fontWeight: 700 }}>
                     Question {Math.min(conversationMessages.filter((m) => m.role === 'assistant').length, 3)} of 3
-                  </span>
+                  </span> */}
                 </div>
               </div>
             </div>
