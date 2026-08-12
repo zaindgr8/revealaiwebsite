@@ -25,7 +25,11 @@ import {
   askDeepQuestion,
   buildUserContext,
   chatTherapy,
+  createCoachSession,
+  endCoachSession,
+  flagSessionCrisis,
   getRecentTherapySessions,
+  saveChatMessage,
   updateStreak,
   type AnalysisResult,
   type TherapySession,
@@ -130,6 +134,10 @@ function TherapyInner() {
 
   // Multi-turn conversation state
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  // T-1: the check-in conversation is persisted too, not just the /chat one.
+  // Stored with source 'checkin' so it stays out of Profile History — its
+  // content already lands on the therapy_sessions row it feeds.
+  const coachSessionIdRef = useRef<string | null>(null);
   const [chatInputText, setChatInputText] = useState('');
   const [isTherapistThinking, setIsTherapistThinking] = useState(false);
   const [isSpeakingId, setIsSpeakingId] = useState<string | null>(null);
@@ -181,6 +189,13 @@ function TherapyInner() {
     stopDespina();
     setIsSpeakingId(null);
 
+    const sessionId = coachSessionIdRef.current;
+    if (sessionId) {
+      void saveChatMessage({ sessionId, role: 'user', content: textToSend }).catch((err) =>
+        console.error('[therapy] could not persist user message:', err)
+      );
+    }
+
     try {
       const apiMessages = updatedMessages.map((m) => ({
         role: m.role,
@@ -190,11 +205,8 @@ function TherapyInner() {
       const assistantCount = conversationMessages.filter((m) => m.role === 'assistant').length;
       const isFinalTurn = assistantCount >= 2; // Next assistant response will be 3rd (final)
 
-      const replyText = await chatTherapy({
+      const result = await chatTherapy({
         messages: apiMessages,
-        context: {
-          detected_mode: 'reflective',
-        },
         isFinalTurn,
       });
 
@@ -202,13 +214,29 @@ function TherapyInner() {
       const assistantMsg: ConversationMessage = {
         id: assistantMsgId,
         role: 'assistant',
-        content: replyText,
+        content: result.reply,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
+      if (sessionId) {
+        void saveChatMessage({
+          sessionId,
+          role: 'assistant',
+          content: result.reply,
+          crisisFlagged: result.crisis === true,
+        }).catch((err) =>
+          console.error('[therapy] could not persist assistant message:', err)
+        );
+        if (result.crisis) void flagSessionCrisis(sessionId).catch(() => {});
+      }
+
       setConversationMessages((prev) => {
         const nextMsgs = [...prev, assistantMsg];
-        if (isFinalTurn) {
+        // T-7/T-8: on escalation the conversation stops here. Do not roll into
+        // the auto-generated results screen — scoring someone's mood and
+        // handing them "today's action" immediately after a crisis disclosure
+        // is exactly the wrong response.
+        if (isFinalTurn && !result.crisis) {
           // System automatically ends chat and generates full results after 1.8s
           setTimeout(() => {
             handleFinishDeepConversation(nextMsgs);
@@ -281,6 +309,16 @@ function TherapyInner() {
     setIsSpeakingId(null);
 
     const msgsToUse = explicitMessages || conversationMessages;
+
+    // Close the persisted conversation. Marked ended so the abandoned-session
+    // sweep does not later pick it up, and so message_count settles.
+    const sessionId = coachSessionIdRef.current;
+    if (sessionId) {
+      coachSessionIdRef.current = null;
+      void endCoachSession(sessionId).catch((err) =>
+        console.error('[therapy] could not close conversation:', err)
+      );
+    }
 
     const questions = msgsToUse
       .filter((m) => m.role === 'assistant')
@@ -419,6 +457,22 @@ function TherapyInner() {
             setConversationMessages([initialMsg]);
             setPhase('deep_conversation');
             setIsSpeakingId(null);
+
+            // Persistence must never block the user from answering, so this
+            // runs alongside rather than in front of the conversation.
+            void (async () => {
+              try {
+                const session = await createCoachSession('checkin');
+                coachSessionIdRef.current = session.id;
+                await saveChatMessage({
+                  sessionId: session.id,
+                  role: 'assistant',
+                  content: question,
+                });
+              } catch (err) {
+                console.error('[therapy] could not persist conversation:', err);
+              }
+            })();
           } catch (qErr) {
             console.warn('[therapy] Deep question failed, continuing to direct analysis:', qErr);
             await runFullAnalysis(audio, acousticFeatures, userContext);

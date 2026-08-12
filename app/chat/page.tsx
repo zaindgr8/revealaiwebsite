@@ -6,7 +6,21 @@ import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
-import { chatTherapy, type AnalysisResult, type ChatMessage } from '@/lib/ai';
+import { CrisisEscalation } from '@/components/CrisisEscalation';
+import {
+  chatTherapy,
+  endCoachSession,
+  flagSessionCrisis,
+  getRecentTherapySessions,
+  getSessionMessages,
+  saveChatMessage,
+  startOrResumeCoachSession,
+  type AnalysisResult,
+  type ChatMessage,
+} from '@/lib/ai';
+import type { CrisisResource } from '@/lib/crisis';
+// Pure function, no server dependency — safe to import into a client component.
+import { relativeDay } from '@/lib/chatMemory';
 
 type Msg = ChatMessage & { id: string };
 
@@ -27,24 +41,110 @@ function buildOpener(results: AnalysisResult) {
 function ChatInner() {
   const router = useRouter();
   const [results, setResults] = useState<AnalysisResult | null>(null);
+  // When the check-in behind `results` was recorded.
+  //
+  // `results` is captured once on mount and never updated, so without a date
+  // beside it the header reads as "this is you, now" when it can be a mood
+  // from three weeks ago — there is no time bound on the fallback lookup.
+  // AnalysisResult omits created_at, so it is tracked separately rather than
+  // widening the type for one field.
+  const [contextAt, setContextAt] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [ending, setEnding] = useState(false);
+  // Set when screening escalates. Non-null means the conversation is over —
+  // T-8 renders the support view and the composer stays disabled.
+  const [crisis, setCrisis] = useState<{ resources: CrisisResource[] } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // T-4: end the session, which triggers summarisation server-side. Only
+  // offered once the user has actually said something — ending an empty
+  // conversation would put a blank row in their history.
+  const hasUserSpoken = messages.some((m) => m.role === 'user');
+
+  const endSession = async () => {
+    if (!sessionId || ending) return;
+    setEnding(true);
     try {
-      const raw = sessionStorage.getItem('chatContext');
-      if (!raw) {
-        router.replace('/home');
-        return;
-      }
-      const parsed = JSON.parse(raw) as AnalysisResult;
-      setResults(parsed);
-      setMessages([{ id: '0', role: 'assistant', content: buildOpener(parsed) }]);
-    } catch {
-      router.replace('/home');
+      await endCoachSession(sessionId);
+      router.push('/history');
+    } catch (err) {
+      console.error('[chat] could not end session:', err);
+      setEnding(false);
     }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // Context comes from sessionStorage when arriving straight from a
+        // check-in. Opening /chat directly used to bounce the user to /home;
+        // now it falls back to their most recent stored check-in so the chat
+        // is reachable on its own.
+        let ctx: AnalysisResult | null = null;
+        // Arriving from a check-in means it was recorded moments ago, so the
+        // sessionStorage path is "now". The fallback path carries its own date.
+        let ctxAt: string | null = null;
+        const raw = sessionStorage.getItem('chatContext');
+        if (raw) {
+          try {
+            ctx = JSON.parse(raw) as AnalysisResult;
+            ctxAt = new Date().toISOString();
+          } catch {
+            ctx = null;
+          }
+        }
+        if (!ctx) {
+          const recent = await getRecentTherapySessions(1);
+          if (recent.length > 0) {
+            ctx = recent[0] as unknown as AnalysisResult;
+            ctxAt = recent[0].created_at;
+          }
+        }
+        if (!ctx) {
+          // Genuinely nothing to talk about yet — send them to record one.
+          router.replace('/home');
+          return;
+        }
+
+        const session = await startOrResumeCoachSession();
+        const stored = await getSessionMessages(session.id);
+        if (cancelled) return;
+
+        setResults(ctx);
+        setContextAt(ctxAt);
+        setSessionId(session.id);
+
+        if (stored.length > 0) {
+          // Resuming: replay exactly what was said, do not re-open.
+          setMessages(
+            stored.map((m) => ({ id: m.id, role: m.role, content: m.content }))
+          );
+          return;
+        }
+
+        // New conversation. The opener is persisted like any other message so
+        // a reload shows the same first line rather than regenerating one.
+        const opener = buildOpener(ctx);
+        const savedOpener = await saveChatMessage({
+          sessionId: session.id,
+          role: 'assistant',
+          content: opener,
+        });
+        if (cancelled) return;
+        setMessages([{ id: savedOpener.id, role: 'assistant', content: opener }]);
+      } catch {
+        if (!cancelled) router.replace('/home');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   useEffect(() => {
@@ -55,35 +155,58 @@ function ChatInner() {
 
   const send = async () => {
     const text = input.trim();
-    if (!text || loading || !results) return;
+    if (!text || loading || !results || !sessionId) return;
 
-    const userMsg: Msg = { id: Date.now().toString(), role: 'user', content: text };
-    const next = [...messages, userMsg];
+    // Render immediately so typing feels responsive, then reconcile the id
+    // once the row comes back.
+    const tempId = `tmp-${Date.now()}`;
+    const next = [...messages, { id: tempId, role: 'user' as const, content: text }];
     setMessages(next);
     setInput('');
     setLoading(true);
 
     try {
-      const apiMessages: ChatMessage[] = next.map((m) => ({ role: m.role, content: m.content }));
-      const reply = await chatTherapy({
-        messages: apiMessages,
-        context: {
-          mood_score: results.mood_score,
-          energy: results.energy,
-          stress: results.stress,
-          detected_mode: results.detected_mode,
-          insight: results.insight,
-        },
+      const savedUser = await saveChatMessage({
+        sessionId,
+        role: 'user',
+        content: text,
+      });
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, id: savedUser.id } : m))
+      );
+
+      const apiMessages: ChatMessage[] = next.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+      const result = await chatTherapy({ messages: apiMessages });
+
+      // T-7/T-8: no therapist reply was generated. Persist the escalation so
+      // the transcript reflects what the user actually saw, flag it for the
+      // T-8 audit trail, and hand off to the escalation view.
+      const savedReply = await saveChatMessage({
+        sessionId,
+        role: 'assistant',
+        content: result.reply,
+        crisisFlagged: result.crisis === true,
       });
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: 'assistant', content: reply },
+        { id: savedReply.id, role: 'assistant', content: result.reply },
       ]);
-    } catch {
+
+      if (result.crisis) {
+        await flagSessionCrisis(sessionId).catch(() => {});
+        setCrisis({ resources: result.resources ?? [] });
+      }
+    } catch (err) {
+      // Deliberately not persisted. A connection failure is not part of the
+      // conversation, so it must not reappear in the transcript on reload.
+      console.error('[chat] send failed:', err);
       setMessages((prev) => [
         ...prev,
         {
-          id: (Date.now() + 1).toString(),
+          id: `err-${Date.now()}`,
           role: 'assistant',
           content: "I'm sorry, I couldn't connect. Please try again.",
         },
@@ -93,14 +216,23 @@ function ChatInner() {
     }
   };
 
-  if (!results) return null;
+  // Both are set together once the session is open. Waiting on sessionId too
+  // means the composer never renders in a state where sending would no-op.
+  if (!results || !sessionId) return null;
 
   const modeColor = MODE_COLOR[results.detected_mode] ?? COLORS.textMuted;
+  // "today" / "3 days ago". Falls back to the neutral wording rather than
+  // guessing a date when the timestamp is unavailable.
+  const contextWhen = contextAt ? relativeDay(contextAt) : null;
 
   return (
     <AppShell
       title="AI Coach Chat"
-      subtitle={`Mood ${results.mood_score} · ${results.detected_mode}`}
+      subtitle={
+        contextWhen
+          ? `From your check-in ${contextWhen}`
+          : 'From your last check-in'
+      }
       contentMaxWidth={920}
       contentPadding="0"
     >
@@ -121,12 +253,42 @@ function ChatInner() {
           }}
         >
           <div style={{ width: 8, height: 8, borderRadius: 4, background: COLORS.blue, boxShadow: `0 0 6px ${COLORS.blue}` }} />
-          <span style={{ fontSize: 12, color: COLORS.textMuted }}>Mood</span>
+          {/*
+            Labelled as history, not as a live reading. This bar is frozen at
+            mount and never updates as the conversation goes, so presenting a
+            bare "Mood 45" invited people to read a possibly weeks-old score as
+            how they are right now.
+          */}
+          <span style={{ fontSize: 12, color: COLORS.textMuted }}>
+            {contextWhen ? `Check-in ${contextWhen}` : 'Last check-in'}
+          </span>
+          <span style={{ fontSize: 12, color: COLORS.cardBorder }}>·</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.blue, fontFamily: 'var(--font-syne)' }}>{results.mood_score}</span>
           <span style={{ fontSize: 12, color: COLORS.cardBorder }}>·</span>
           <span style={{ fontSize: 12, color: modeColor, textTransform: 'capitalize', fontWeight: 600 }}>
             {results.detected_mode}
           </span>
+
+          {hasUserSpoken && (
+            <button
+              onClick={endSession}
+              disabled={ending}
+              style={{
+                marginLeft: 'auto',
+                padding: '6px 14px',
+                borderRadius: 10,
+                border: `1px solid ${COLORS.cardBorder}`,
+                background: 'transparent',
+                color: COLORS.textMuted,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: ending ? 'wait' : 'pointer',
+                opacity: ending ? 0.5 : 1,
+              }}
+            >
+              {ending ? 'Saving…' : 'End session'}
+            </button>
+          )}
         </div>
 
         <div style={{ padding: '14px 24px 0' }}>
@@ -193,6 +355,18 @@ function ChatInner() {
           )}
         </div>
 
+        {/*
+          T-8: the composer is REPLACED, not disabled or overlaid. If the user
+          can still type, the conversational flow was not interrupted and the
+          requirement is not met.
+        */}
+        {crisis ? (
+          <CrisisEscalation
+            resources={crisis.resources}
+            acknowledging={ending}
+            onAcknowledge={endSession}
+          />
+        ) : (
         <div
           style={{
             display: 'flex',
@@ -250,6 +424,7 @@ function ChatInner() {
             <Icon name="send" size={18} color={COLORS.white} />
           </button>
         </div>
+        )}
       </div>
     </AppShell>
   );
