@@ -6,7 +6,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:crisis": "npx tsx scripts/runCrisisTests.ts",
+    "test:memory": "npx tsx scripts/runMemoryTests.ts",
+    "demo:memory": "npx tsx scripts/runMemoryTests.ts",
+    "demo:windows": "npx tsx scripts/runMemoryTests.ts --windows",
+    "demo:prompt": "npx tsx scripts/runMemoryTests.ts --prompt"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

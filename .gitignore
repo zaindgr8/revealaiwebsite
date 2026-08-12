@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# database backups — contain real user data, never commit
+backups/
+
+# agent tooling — local, not part of the product
+.agents/
+.claude/
+skills-lock.json
