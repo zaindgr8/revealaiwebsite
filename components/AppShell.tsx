@@ -11,12 +11,23 @@ import { useIsMobile } from '@/hooks/useMediaQuery';
 
 type NavItem = { href: string; label: string; icon: string };
 
+// Every href here must match a route under app/. Two of these pointed at
+// /journey and /sessions, which have never existed — the pages were built as
+// /trends and /history and the nav was not updated, so both items 404'd and
+// Profile History was reachable only from inside Settings. That matters beyond
+// navigation: T-5 and T-6 are demoed on the history screen.
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
   { href: '/therapy', label: 'Reflect', icon: 'pulse' },
-  // { href: '/chat', label: 'AI Chat', icon: 'chat' },
-  { href: '/journey', label: 'Journey', icon: 'trending-up' },
-  { href: '/sessions', label: 'Sessions', icon: 'time' },
+  { href: '/chat', label: 'AI Chat', icon: 'chat' },
+  // Feature 2. Reachable but INCOMPLETE: processing stops at 'analysing' with a
+  // speaker-labelled transcript and no result, because I-5 is blocked on D-1
+  // (see app/api/intent/process/route.ts). Fine for testing and for Demo 4.
+  // Reconsider before this reaches real users — a nav entry is a promise that
+  // the thing behind it finishes.
+  { href: '/intent', label: 'Intent', icon: 'users' },
+  { href: '/trends', label: 'Journey', icon: 'trending-up' },
+  { href: '/history', label: 'Sessions', icon: 'time' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
 

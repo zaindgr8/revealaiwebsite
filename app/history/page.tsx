@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
 import { AuthGuard } from '@/components/AuthGuard';
@@ -7,35 +7,70 @@ import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import {
   deleteAllTherapySessions,
-  deleteTherapySession,
-  getRecentTherapySessions,
-  type TherapySession,
+  deleteHistoryItem,
+  getHistoryFeed,
+  HISTORY_PAGE_SIZE,
+  type HistoryItem,
 } from '@/lib/ai';
+import { MiniChart } from '@/components/MiniChart';
 import { fmtFullDate, fmtTime } from '@/lib/format';
 
 function HistoryInner() {
-  const [sessions, setSessions] = useState<TherapySession[]>([]);
+  const [sessions, setSessions] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    getRecentTherapySessions(100)
-      .then(setSessions)
-      .catch(() => setSessions([]))
-      .finally(() => setLoading(false));
+  // `loading` already initialises to true, so there is no setState before the
+  // first await — which is what react-hooks/set-state-in-effect objects to.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const items = await getHistoryFeed();
+        if (cancelled) return;
+        setSessions(items);
+        setHasMore(items.length === HISTORY_PAGE_SIZE);
+      } catch {
+        if (!cancelled) setSessions([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const handleDelete = async (id: string) => {
-    if (!confirm('Remove this session from your history?')) return;
-    setDeleting(id);
+  const loadMore = async () => {
+    const oldest = sessions[sessions.length - 1];
+    if (!oldest || loadingMore) return;
+    setLoadingMore(true);
     try {
-      await deleteTherapySession(id);
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      const next = await getHistoryFeed({ before: oldest.created_at });
+      setSessions((prev) => [...prev, ...next]);
+      setHasMore(next.length === HISTORY_PAGE_SIZE);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // T-6: mood over time. Oldest to newest so the line reads left to right,
+  // and only points that actually have a score — a session still awaiting its
+  // summary would otherwise plot as a drop to zero.
+  const chartPoints = [...sessions]
+    .reverse()
+    .filter((s) => typeof s.mood_score === 'number');
+
+  const handleDelete = async (item: HistoryItem) => {
+    if (!confirm('Remove this session from your history?')) return;
+    setDeleting(item.id);
+    try {
+      await deleteHistoryItem(item);
+      setSessions((prev) => prev.filter((s) => s.id !== item.id));
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -145,12 +180,53 @@ function HistoryInner() {
           </div>
         </div>
       ) : (
+        <>
+        {/* T-6: renders for any user with 2 or more scored sessions. */}
+        {chartPoints.length >= 2 && (
+          <div
+            style={{
+              background: COLORS.card,
+              border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 18,
+              padding: '18px 18px 12px',
+              marginBottom: 14,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: COLORS.textSecondary,
+                marginBottom: 10,
+              }}
+            >
+              Mood over time
+            </div>
+            <MiniChart
+              data={chartPoints.map((s) => s.mood_score as number)}
+              color={COLORS.blue}
+              height={110}
+              labels={chartPoints.map((s) => fmtFullDate(s.created_at))}
+            />
+          </div>
+        )}
+
         <Grid cols={2} gap={12}>
           {sessions.map((item) => {
-            const modeColor = MODE_COLOR[item.detected_mode] ?? COLORS.textMuted;
+            const modeColor = item.label
+              ? MODE_COLOR[item.label] ?? COLORS.blue
+              : COLORS.textMuted;
             const isDeleting = deleting === item.id;
             const score = item.mood_score;
-            const scoreColor = score >= 70 ? COLORS.blue : score >= 50 ? COLORS.warning : COLORS.danger;
+            // A conversation that has not been summarised yet has no score.
+            const scoreColor =
+              score === null
+                ? COLORS.textMuted
+                : score >= 70
+                  ? COLORS.blue
+                  : score >= 50
+                    ? COLORS.warning
+                    : COLORS.danger;
             return (
               <div
                 key={item.id}
@@ -180,7 +256,7 @@ function HistoryInner() {
                   }}
                 >
                   <span style={{ fontSize: 15, fontWeight: 800, color: scoreColor, fontFamily: 'var(--font-syne)', lineHeight: 1 }}>
-                    {score}
+                    {score ?? '—'}
                   </span>
                   <span style={{ fontSize: 8, color: scoreColor, opacity: 0.7, textTransform: 'uppercase', letterSpacing: '0.04em' }}>mood</span>
                 </div>
@@ -195,29 +271,45 @@ function HistoryInner() {
                     <span style={{ fontSize: 10, color: COLORS.textMuted }}>{fmtTime(item.created_at)}</span>
                   </div>
 
-                  {/* Mode chip */}
-                  <div style={{ marginBottom: 6 }}>
-                    <span
-                      style={{
-                        background: modeColor + '18',
-                        color: modeColor,
-                        padding: '2px 8px',
-                        borderRadius: 6,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textTransform: 'capitalize',
-                      }}
-                    >
-                      {item.detected_mode}
-                    </span>
+                  {/* Mode / kind chip */}
+                  <div style={{ marginBottom: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {item.label && (
+                      <span
+                        style={{
+                          background: modeColor + '18',
+                          color: modeColor,
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: 'capitalize',
+                        }}
+                      >
+                        {item.label}
+                      </span>
+                    )}
+                    {item.crisis_flagged && (
+                      <span
+                        style={{
+                          background: COLORS.danger + '18',
+                          color: COLORS.danger,
+                          padding: '2px 8px',
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Support shown
+                      </span>
+                    )}
                   </div>
 
-                  {item.transcript && (
+                  {item.excerpt && (
                     <div
                       style={{
                         fontSize: 12,
                         color: COLORS.textSecondary,
-                        fontStyle: 'italic',
+                        fontStyle: item.kind === 'checkin' ? 'italic' : 'normal',
                         lineHeight: 1.5,
                         display: '-webkit-box',
                         WebkitLineClamp: 2,
@@ -225,14 +317,16 @@ function HistoryInner() {
                         overflow: 'hidden',
                       }}
                     >
-                      &ldquo;{item.transcript}&rdquo;
+                      {item.kind === 'checkin'
+                        ? `“${item.excerpt}”`
+                        : item.excerpt}
                     </div>
                   )}
                 </div>
 
                 {/* Delete button */}
                 <button
-                  onClick={() => handleDelete(item.id)}
+                  onClick={() => handleDelete(item)}
                   disabled={isDeleting}
                   style={{ padding: 6, flexShrink: 0, marginTop: 2 }}
                   aria-label="Delete session"
@@ -256,6 +350,29 @@ function HistoryInner() {
             );
           })}
         </Grid>
+
+        {hasMore && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 16 }}>
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              style={{
+                padding: '11px 22px',
+                borderRadius: 12,
+                border: `1px solid ${COLORS.cardBorder}`,
+                background: COLORS.card,
+                color: COLORS.textSecondary,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: loadingMore ? 'wait' : 'pointer',
+                opacity: loadingMore ? 0.6 : 1,
+              }}
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          </div>
+        )}
+        </>
       )}
     </AppShell>
   );
