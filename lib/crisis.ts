@@ -52,9 +52,42 @@ export type CrisisResource = {
   note?: string;
 };
 
+/**
+ * Populated 12 August 2026 from numbers supplied by the client.
+ *
+ * ONLY the two that a person at immediate risk can actually be helped by.
+ *
+ * The list we were given also contained 997 (Civil Defence/Fire), 996 (Coast
+ * Guard) and 991 (electricity failures). They are correct UAE emergency
+ * numbers and they are wrong for this screen: none of them leads anywhere
+ * useful for someone who has just said they do not want to be alive. A person
+ * in that state should not be triaging a list. Every extra line here is
+ * something they have to read past to find the one that helps, so the list is
+ * kept to what answers.
+ *
+ * A sixth number, 995, was supplied without a label. An unlabelled number is
+ * not shown — the same reasoning as ADR-007: a number someone cannot identify
+ * is a number they will not call.
+ *
+ * STILL MISSING, and this is still D-7: a dedicated mental-health crisis line.
+ * 999 reaches emergency dispatch, which is the correct answer when someone is
+ * in immediate danger, but it is not the same thing as a trained counsellor
+ * and it will not be right for everyone who reaches this screen. Add it here
+ * when the client supplies a verified one. Do not fill it in from memory.
+ */
 export const CRISIS_RESOURCES: CrisisResource[] = [
-  // TODO(D-7): awaiting verified UAE crisis line details from the client.
-  // Do not populate from memory — these must be confirmed before shipping.
+  {
+    region: 'UAE',
+    name: 'Emergency services (Police)',
+    contact: '999',
+    note: 'If you are in immediate danger, call this now.',
+  },
+  {
+    region: 'UAE',
+    name: 'Ambulance',
+    contact: '998',
+    note: 'For urgent medical help.',
+  },
 ];
 
 export const CRISIS_RESOURCES_PENDING = CRISIS_RESOURCES.length === 0;
