@@ -1,6 +1,7 @@
 'use client';
 import { supabase } from './supabase';
 import type { AcousticFeatures } from './audioFeatures';
+import type { CrisisLevel, CrisisResource } from './crisis';
 
 export type VocalMetrics = {
   pitch_variability: number;
@@ -43,6 +44,13 @@ export type TherapySession = {
   narrative_type?: 'past' | 'present' | 'future' | 'mixed';
   readiness_score?: number | null;
   readiness_note?: string | null;
+  /**
+   * False when the analysis succeeded but the database write did not, so this
+   * session will NOT appear in Profile History or Trends. Surface it — a
+   * silently dropped save is the bug that made history look empty.
+   */
+  saved?: boolean;
+  save_error?: string;
 };
 
 export type AnalysisResult = Omit<TherapySession, 'id' | 'created_at'>;
@@ -69,6 +77,60 @@ export type StreakData = {
 };
 
 export type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+/**
+ * One chat conversation. Mirrors public.coach_sessions (migration 0002).
+ *
+ * `summary`, `mood_score` and `topics` are null until the session ends and
+ * T-4's summarisation pass writes them. Profile History reads those three
+ * fields, so a session in progress renders as ongoing rather than empty.
+ */
+/**
+ * Which surface a conversation happened on (migration 0003).
+ *
+ * 'chat'    — the standalone /chat route, shown in Profile History.
+ * 'checkin' — the inline conversation inside the voice check-in flow. Stored
+ *             so T-1 holds, but hidden from history: its content already
+ *             appears on the therapy_sessions row it fed into, and listing
+ *             both would show one check-in as two entries.
+ */
+export type CoachSessionSource = 'chat' | 'checkin';
+
+export type CoachSession = {
+  id: string;
+  user_id: string;
+  created_at: string;
+  ended_at: string | null;
+  summary: string | null;
+  mood_score: number | null;
+  topics: string[] | null;
+  message_count: number;
+  crisis_flagged: boolean;
+  source: CoachSessionSource;
+};
+
+/** One stored message. Mirrors public.chat_messages (migration 0002). */
+export type ChatMessageRow = {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  crisis_flagged: boolean;
+  created_at: string;
+};
+
+/**
+ * What T-2 loads into the prompt at the start of a conversation: the five most
+ * recent finished sessions, plus the mood trend from voice check-ins.
+ */
+export type ChatMemory = {
+  recentSessions: Pick<
+    CoachSession,
+    'created_at' | 'summary' | 'mood_score' | 'topics'
+  >[];
+  moodTrend: UserContext;
+};
 
 async function getAuthToken(): Promise<string> {
   const { data } = await supabase.auth.getSession();
@@ -111,15 +173,33 @@ export async function getStreak(): Promise<StreakData | null> {
   }
 }
 
+/**
+ * A therapist turn, or a crisis interruption instead of one (T-7 / T-8).
+ *
+ * When `crisis` is true the reply is the escalation text, no therapist call was
+ * made, and the UI must break out of normal conversation flow rather than
+ * rendering this as another chat bubble.
+ */
+export type ChatReply = {
+  reply: string;
+  crisis?: boolean;
+  resources?: CrisisResource[];
+  level?: CrisisLevel;
+};
+
+/**
+ * No `context` parameter, deliberately. The route reads the user's check-in
+ * history itself, under their own JWT — see lib/chatMemory.ts. Passing it from
+ * here meant client-controlled text reached the system prompt, and meant the
+ * model was fed whatever mood happened to be captured when the page mounted.
+ */
 export async function chatTherapy({
   messages,
-  context,
   isFinalTurn,
 }: {
   messages: ChatMessage[];
-  context: Partial<AnalysisResult>;
   isFinalTurn?: boolean;
-}): Promise<string> {
+}): Promise<ChatReply> {
   const token = await getAuthToken();
   const res = await fetch('/api/chat-therapy', {
     method: 'POST',
@@ -127,12 +207,17 @@ export async function chatTherapy({
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ messages, context, is_final_turn: isFinalTurn }),
+    body: JSON.stringify({ messages, is_final_turn: isFinalTurn }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || 'Chat failed');
   if (data?.error) throw new Error(data.error);
-  return data.reply;
+  return {
+    reply: data.reply,
+    crisis: data.crisis === true,
+    resources: data.resources ?? [],
+    level: data.level,
+  };
 }
 
 export async function askDeepQuestion({
@@ -200,6 +285,14 @@ export async function analyzeMood({
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || 'Analysis failed');
   if (data?.error) throw new Error(data.error);
+
+  if (data?.saved === false) {
+    console.error(
+      '[analyzeMood] Analysis returned but was NOT saved. This session will ' +
+        'not appear in history. Cause: ' + (data.save_error ?? 'unknown')
+    );
+  }
+
   return data as AnalysisResult;
 }
 
@@ -240,6 +333,293 @@ export function buildUserContext(sessions: TherapySession[]): UserContext {
     last_mood: last?.mood_score,
     recent_modes: last7.map((s) => s.detected_mode),
   };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Chat persistence (T-1)
+//
+// Before this, messages lived in React state and the check-in context in
+// sessionStorage, so closing the tab destroyed the conversation. Everything
+// below writes through to coach_sessions / chat_messages (migration 0002).
+// ─────────────────────────────────────────────────────────────
+
+async function currentUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) throw new Error('Not authenticated');
+  return data.user.id;
+}
+
+/**
+ * How long an unfinished conversation stays resumable. Reopening the tab
+ * within this window continues where you left off, which is what T-1 tests.
+ * Past it, a new session starts rather than reviving a stale one — otherwise a
+ * session that never got closed would trap the user in it indefinitely.
+ */
+const RESUME_WINDOW_HOURS = 12;
+
+/**
+ * Always creates a fresh session. Used by the check-in flow, where each
+ * recording starts a new conversation and resuming an old one would splice two
+ * unrelated check-ins together.
+ */
+export async function createCoachSession(
+  source: CoachSessionSource = 'chat'
+): Promise<CoachSession> {
+  const userId = await currentUserId();
+  const { data, error } = await supabase
+    .from('coach_sessions')
+    .insert({ user_id: userId, source })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as CoachSession;
+}
+
+export async function startOrResumeCoachSession(): Promise<CoachSession> {
+  const userId = await currentUserId();
+
+  const cutoff = new Date(
+    Date.now() - RESUME_WINDOW_HOURS * 60 * 60 * 1000
+  ).toISOString();
+
+  const { data: open, error: openErr } = await supabase
+    .from('coach_sessions')
+    .select('*')
+    .eq('source', 'chat')
+    .is('ended_at', null)
+    .gte('created_at', cutoff)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (openErr) throw new Error(openErr.message);
+  if (open && open.length > 0) return open[0] as CoachSession;
+
+  // Nothing resumable, so anything still open is abandoned. Close those out in
+  // the background rather than leaving them permanently unsummarised.
+  void sweepAbandonedSessions(cutoff).catch(() => {});
+
+  const { data, error } = await supabase
+    .from('coach_sessions')
+    .insert({ user_id: userId, source: 'chat' })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as CoachSession;
+}
+
+/**
+ * T-4: close a session and write its summary, mood and topics.
+ *
+ * The server does the work — it holds the model key and enforces RLS. Safe to
+ * call more than once; an already-ended session returns immediately.
+ */
+export async function endCoachSession(sessionId: string): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch('/api/summarise-session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error || 'Could not end session');
+}
+
+/**
+ * Closes conversations the user walked away from without ending.
+ *
+ * Without this, an abandoned session stays open forever: it never gets a
+ * summary, so T-2 can never remember it, and it sits in Profile History as a
+ * blank row. Fire-and-forget — sweeping is housekeeping and must never delay
+ * the user getting into a new conversation.
+ */
+async function sweepAbandonedSessions(cutoffIso: string): Promise<void> {
+  // Only standalone chats. An abandoned check-in conversation is closed by the
+  // check-in flow itself, and summarising one would spend a model call on
+  // content that already went into the check-in analysis.
+  const { data, error } = await supabase
+    .from('coach_sessions')
+    .select('id')
+    .eq('source', 'chat')
+    .is('ended_at', null)
+    .lt('created_at', cutoffIso)
+    .limit(5);
+  if (error || !data?.length) return;
+
+  await Promise.allSettled(data.map((s) => endCoachSession(s.id as string)));
+}
+
+export async function getSessionMessages(sessionId: string): Promise<ChatMessageRow[]> {
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .select('*')
+    .eq('session_id', sessionId)
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  return (data ?? []) as ChatMessageRow[];
+}
+
+export async function saveChatMessage({
+  sessionId,
+  role,
+  content,
+  crisisFlagged = false,
+}: {
+  sessionId: string;
+  role: 'user' | 'assistant';
+  content: string;
+  crisisFlagged?: boolean;
+}): Promise<ChatMessageRow> {
+  const userId = await currentUserId();
+  const { data, error } = await supabase
+    .from('chat_messages')
+    .insert({
+      session_id: sessionId,
+      user_id: userId,
+      role,
+      content,
+      crisis_flagged: crisisFlagged,
+    })
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as ChatMessageRow;
+}
+
+/**
+ * Marks a conversation as having triggered escalation (T-8 audit trail).
+ *
+ * Recorded at session level rather than by updating the triggering message,
+ * because chat_messages has no UPDATE policy by design — a transcript is
+ * appended to, never rewritten.
+ */
+export async function flagSessionCrisis(sessionId: string): Promise<void> {
+  const { error } = await supabase
+    .from('coach_sessions')
+    .update({ crisis_flagged: true })
+    .eq('id', sessionId);
+  if (error) throw new Error(error.message);
+}
+
+/** Finished sessions, newest first. Feeds T-2's memory and T-5's history list. */
+export async function getRecentCoachSessions(limit = 5): Promise<CoachSession[]> {
+  const { data, error } = await supabase
+    .from('coach_sessions')
+    .select('*')
+    .not('ended_at', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  return (data ?? []) as CoachSession[];
+}
+
+// ─────────────────────────────────────────────────────────────
+// Profile History feed (T-5, T-6)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * One row in Profile History. Voice check-ins and chat sessions are different
+ * tables, but the user thinks of them as one timeline, so they are normalised
+ * into a single shape here rather than in the component.
+ */
+export type HistoryItem = {
+  id: string;
+  kind: 'checkin' | 'chat';
+  created_at: string;
+  mood_score: number | null;
+  /** detected_mode for a check-in, or a topic for a conversation. */
+  label: string | null;
+  /** T-5 requires a summary on each row. */
+  excerpt: string | null;
+  topics: string[] | null;
+  crisis_flagged: boolean;
+};
+
+/** Page size. Small enough that T-5's 2-second target holds regardless of total volume. */
+export const HISTORY_PAGE_SIZE = 30;
+
+/**
+ * T-5: past sessions, reverse chronological, under 2 seconds with 100 stored.
+ *
+ * The previous implementation did `select('*')` with a limit of 100, which
+ * pulled every full transcript into the browser to render a two-line preview.
+ * Only the columns the list actually draws are selected here — notably
+ * `transcript_summary` instead of `transcript`, which is both far smaller and
+ * closer to what T-5 asks for ("date, mood, and summary").
+ *
+ * Pass `before` (the oldest loaded created_at) to page backwards.
+ */
+export async function getHistoryFeed({
+  limit = HISTORY_PAGE_SIZE,
+  before,
+}: { limit?: number; before?: string } = {}): Promise<HistoryItem[]> {
+  let checkins = supabase
+    .from('therapy_sessions')
+    .select('id, created_at, mood_score, detected_mode, transcript_summary')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  // Only standalone conversations. A check-in conversation is already
+  // represented by its therapy_sessions row — listing both would show one
+  // check-in as two separate history entries.
+  let chats = supabase
+    .from('coach_sessions')
+    .select('id, created_at, mood_score, summary, topics, crisis_flagged')
+    .eq('source', 'chat')
+    .not('ended_at', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (before) {
+    checkins = checkins.lt('created_at', before);
+    chats = chats.lt('created_at', before);
+  }
+
+  const [checkinRes, chatRes] = await Promise.all([checkins, chats]);
+  if (checkinRes.error) throw new Error(checkinRes.error.message);
+
+  // A missing coach_sessions table or column must not take down the whole
+  // screen — check-ins are the older, more important half of this feed.
+  if (chatRes.error) {
+    console.error('[history] chat sessions unavailable:', chatRes.error.message);
+  }
+
+  const items: HistoryItem[] = [
+    ...(checkinRes.data ?? []).map((r) => ({
+      id: r.id as string,
+      kind: 'checkin' as const,
+      created_at: r.created_at as string,
+      mood_score: (r.mood_score as number) ?? null,
+      label: (r.detected_mode as string) ?? null,
+      excerpt: (r.transcript_summary as string) ?? null,
+      topics: null,
+      crisis_flagged: false,
+    })),
+    ...(chatRes.data ?? []).map((r) => ({
+      id: r.id as string,
+      kind: 'chat' as const,
+      created_at: r.created_at as string,
+      mood_score: (r.mood_score as number) ?? null,
+      label: 'conversation',
+      excerpt: (r.summary as string) ?? null,
+      topics: (r.topics as string[]) ?? null,
+      crisis_flagged: (r.crisis_flagged as boolean) ?? false,
+    })),
+  ];
+
+  // Both queries returned up to `limit`, so the merged list is over-long.
+  // Sorting then slicing keeps the page boundary correct across both tables.
+  items.sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+  return items.slice(0, limit);
+}
+
+export async function deleteHistoryItem(item: HistoryItem): Promise<void> {
+  const table = item.kind === 'chat' ? 'coach_sessions' : 'therapy_sessions';
+  const { error } = await supabase.from(table).delete().eq('id', item.id);
+  if (error) throw new Error(error.message);
 }
 
 export async function getRecentTherapySessions(limit = 30): Promise<TherapySession[]> {
