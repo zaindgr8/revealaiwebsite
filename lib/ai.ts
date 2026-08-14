@@ -525,7 +525,12 @@ export async function getRecentCoachSessions(limit = 5): Promise<CoachSession[]>
  */
 export type HistoryItem = {
   id: string;
-  kind: 'checkin' | 'chat';
+  /**
+   * 'intent' rows are Intent Detector conversations (I-6). They carry no mood
+   * score, so they never reach the mood chart — which is correct, because a
+   * conversation with someone else is not a reading of how the user feels.
+   */
+  kind: 'checkin' | 'chat' | 'intent';
   created_at: string;
   mood_score: number | null;
   /** detected_mode for a check-in, or a topic for a conversation. */
@@ -576,13 +581,32 @@ export async function getHistoryFeed({
     chats = chats.lt('created_at', before);
   }
 
-  const [checkinRes, chatRes] = await Promise.all([checkins, chats]);
+  // I-6: "Results are viewable later from history."
+  //
+  // Only sessions that reached a verdict. A draft or half-uploaded session is
+  // not a result, and listing one gives the user a row that opens onto nothing.
+  // 'insufficient_quality' IS included: being told the recording could not be
+  // read is a result, and hiding it would make failed attempts vanish without
+  // explanation.
+  let intents = supabase
+    .from('intent_sessions')
+    .select('id, created_at, scenario, status, other_speaker_name, attribution_confidence')
+    .in('status', ['analysing', 'complete', 'insufficient_quality'])
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (before) intents = intents.lt('created_at', before);
+
+  const [checkinRes, chatRes, intentRes] = await Promise.all([checkins, chats, intents]);
   if (checkinRes.error) throw new Error(checkinRes.error.message);
 
   // A missing coach_sessions table or column must not take down the whole
   // screen — check-ins are the older, more important half of this feed.
   if (chatRes.error) {
     console.error('[history] chat sessions unavailable:', chatRes.error.message);
+  }
+  if (intentRes.error) {
+    console.error('[history] intent sessions unavailable:', intentRes.error.message);
   }
 
   const items: HistoryItem[] = [
@@ -601,11 +625,32 @@ export async function getHistoryFeed({
       kind: 'chat' as const,
       created_at: r.created_at as string,
       mood_score: (r.mood_score as number) ?? null,
-      label: 'conversation',
+      // No chip. The other two kinds put something informative here — the mood
+      // word for a check-in, the scenario for a recorded conversation — but a
+      // chat only ever had the static string 'conversation', which said nothing
+      // the row's own kind label does not already say.
+      label: null,
       excerpt: (r.summary as string) ?? null,
       topics: (r.topics as string[]) ?? null,
       crisis_flagged: (r.crisis_flagged as boolean) ?? false,
     })),
+    ...(intentRes.data ?? []).map((r) => {
+      const who = (r.other_speaker_name as string) || 'someone';
+      const unreadable = r.status === 'insufficient_quality';
+      return {
+        id: r.id as string,
+        kind: 'intent' as const,
+        created_at: r.created_at as string,
+        // No mood score, deliberately. See the note on HistoryItem.kind.
+        mood_score: null,
+        label: (r.scenario as string) ?? 'conversation',
+        excerpt: unreadable
+          ? 'This recording could not be read clearly enough to analyse.'
+          : `Conversation with ${who}.`,
+        topics: null,
+        crisis_flagged: false,
+      };
+    }),
   ];
 
   // Both queries returned up to `limit`, so the merged list is over-long.
@@ -616,8 +661,14 @@ export async function getHistoryFeed({
   return items.slice(0, limit);
 }
 
+const HISTORY_TABLES: Record<HistoryItem['kind'], string> = {
+  chat: 'coach_sessions',
+  checkin: 'therapy_sessions',
+  intent: 'intent_sessions',
+};
+
 export async function deleteHistoryItem(item: HistoryItem): Promise<void> {
-  const table = item.kind === 'chat' ? 'coach_sessions' : 'therapy_sessions';
+  const table = HISTORY_TABLES[item.kind];
   const { error } = await supabase.from(table).delete().eq('id', item.id);
   if (error) throw new Error(error.message);
 }
@@ -630,6 +681,41 @@ export async function getRecentTherapySessions(limit = 30): Promise<TherapySessi
     .limit(limit);
   if (error) throw new Error(error.message);
   return (data ?? []) as TherapySession[];
+}
+
+/**
+ * One check-in, in full.
+ *
+ * The history row shows a two-line summary while the row itself holds the
+ * insight, the vocal read, the recommendations and the transcript. This is what
+ * the detail view reads.
+ *
+ * Returns null rather than throwing when the row is missing — a stale link or a
+ * session deleted in another tab is an ordinary thing for a user to do, not an
+ * error worth an error screen.
+ */
+export async function getTherapySession(id: string): Promise<TherapySession | null> {
+  const { data, error } = await supabase
+    .from('therapy_sessions')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as TherapySession) ?? null;
+}
+
+/** One conversation and every message in it, for the detail view. */
+export async function getCoachSession(
+  id: string
+): Promise<{ session: CoachSession; messages: ChatMessageRow[] } | null> {
+  const { data, error } = await supabase
+    .from('coach_sessions')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  return { session: data as CoachSession, messages: await getSessionMessages(id) };
 }
 
 export async function deleteTherapySession(id: string) {
