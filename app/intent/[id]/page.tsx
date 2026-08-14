@@ -1,0 +1,535 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { COLORS } from '@/lib/theme';
+import { AuthGuard } from '@/components/AuthGuard';
+import { AppShell } from '@/components/AppShell';
+import {
+  TERMINAL_STATUSES,
+  deleteIntentSession,
+  getIntentSession,
+  nameOtherSpeaker,
+  startProcessing,
+  swapSpeakerAttribution,
+  type IntentSession,
+  type IntentStatus,
+} from '@/lib/audioStorage';
+import type { Segment } from '@/lib/transcription';
+
+/**
+ * Intent Detector result screen.
+ *
+ * N-8: processing runs as a background job with visible status. This polls the
+ * session row rather than holding a request open — a 20-minute recording takes
+ * minutes to process, and a page that hangs on it breaks the moment anyone
+ * closes the tab or loses signal.
+ *
+ * I-6: results are retrievable after logout and login, which is why this is a
+ * routable page keyed on the session id rather than state in the record flow.
+ */
+
+const POLL_MS = 4000;
+
+const STATUS_COPY: Record<IntentStatus, { title: string; detail: string }> = {
+  draft: { title: 'Not started', detail: 'This session was never recorded.' },
+  awaiting_upload: {
+    title: 'Waiting for the recording',
+    detail: 'The audio has not finished uploading yet.',
+  },
+  uploaded: {
+    title: 'Queued',
+    detail: 'Your recording is stored and about to be processed.',
+  },
+  transcribing: {
+    title: 'Working out who said what',
+    detail: 'Separating the two voices and matching one of them to your voice sample.',
+  },
+  analysing: {
+    title: 'Reading the conversation',
+    detail: 'The transcript is ready. Interpretation is the next step.',
+  },
+  complete: { title: 'Done', detail: '' },
+  insufficient_quality: {
+    title: 'We could not read this recording clearly',
+    detail: '',
+  },
+  failed: { title: 'Something went wrong', detail: '' },
+};
+
+function ResultInner() {
+  const params = useParams<{ id: string }>();
+  const router = useRouter();
+  const sessionId = params?.id;
+
+  const [session, setSession] = useState<IntentSession | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
+  const [retrying, setRetrying] = useState(false);
+  const [swapping, setSwapping] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+
+    const tick = async () => {
+      try {
+        const s = await getIntentSession(sessionId);
+        if (cancelled) return;
+        if (!s) {
+          setError('That session no longer exists.');
+          setLoading(false);
+          return;
+        }
+        setSession(s);
+        setNameDraft((prev) => prev || s.other_speaker_name || '');
+        setLoading(false);
+
+        // Stop polling once there is nothing left to wait for.
+        if (!TERMINAL_STATUSES.includes(s.status)) {
+          timerRef.current = setTimeout(tick, POLL_MS);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setError((e as Error).message);
+          setLoading(false);
+        }
+      }
+    };
+
+    tick();
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [sessionId]);
+
+  const retry = async () => {
+    if (!session) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      await startProcessing(session.id);
+      const s = await getIntentSession(session.id);
+      setSession(s);
+      if (s && !TERMINAL_STATUSES.includes(s.status)) {
+        timerRef.current = setTimeout(async () => {
+          const next = await getIntentSession(session.id);
+          setSession(next);
+        }, POLL_MS);
+      }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setRetrying(false);
+    }
+  };
+
+  const swap = async () => {
+    if (!session || swapping) return;
+    setSwapping(true);
+    setError(null);
+    try {
+      setSession(await swapSpeakerAttribution(session.id));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSwapping(false);
+    }
+  };
+
+  const saveName = async () => {
+    if (!session) return;
+    try {
+      await nameOtherSpeaker(session.id, nameDraft);
+      setSession({ ...session, other_speaker_name: nameDraft.trim() || null });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  const remove = async () => {
+    if (!session) return;
+    if (!confirm('Delete this recording and its analysis? This cannot be undone.')) return;
+    try {
+      await deleteIntentSession(session.id);
+      router.push('/history');
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <AppShell title="Conversation">
+        <div style={{ display: 'flex', justifyContent: 'center', padding: 70 }}>
+          <Spinner />
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!session) {
+    return (
+      <AppShell title="Conversation">
+        <Notice tone="danger">{error ?? 'Session not found.'}</Notice>
+      </AppShell>
+    );
+  }
+
+  const copy = STATUS_COPY[session.status];
+  const transcript = session.transcript as
+    | { segments?: Segment[]; enrolled_share?: number; chunk_count?: number; transcribed_in_seconds?: number }
+    | null;
+  const segments = transcript?.segments ?? [];
+  const themLabel = session.other_speaker_name?.trim() || 'Them';
+  const inProgress = !TERMINAL_STATUSES.includes(session.status);
+
+  return (
+    <AppShell
+      title="Conversation"
+      subtitle={
+        session.scenario
+          ? `${session.scenario[0].toUpperCase()}${session.scenario.slice(1)} · ${new Date(session.created_at).toLocaleDateString()}`
+          : new Date(session.created_at).toLocaleDateString()
+      }
+    >
+      <div style={{ maxWidth: 680 }}>
+        {error && <Notice tone="danger">{error}</Notice>}
+
+        {inProgress && (
+          <Card>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+              <Spinner size={20} />
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
+                  {copy.title}
+                </div>
+                <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 3, lineHeight: 1.5 }}>
+                  {copy.detail}
+                </div>
+              </div>
+            </div>
+            <p style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 14, lineHeight: 1.6 }}>
+              You can leave this page. The work carries on and the result will be
+              here when you come back.
+            </p>
+          </Card>
+        )}
+
+        {/* I-7: a quality problem is a legitimate outcome, not an error. */}
+        {session.status === 'insufficient_quality' && (
+          <Card accent={COLORS.warning}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 8, fontFamily: 'var(--font-syne)' }}>
+              {copy.title}
+            </div>
+            <p style={{ fontSize: 13.5, color: COLORS.textSecondary, lineHeight: 1.65, marginBottom: 14 }}>
+              {session.error}
+            </p>
+            <p style={{ fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.6 }}>
+              We would rather tell you this than show you a confident answer built
+              on audio we could not read properly.
+            </p>
+          </Card>
+        )}
+
+        {session.status === 'failed' && (
+          <Card accent={COLORS.danger}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 8 }}>
+              {copy.title}
+            </div>
+            <p style={{ fontSize: 13.5, color: COLORS.textSecondary, lineHeight: 1.65, marginBottom: 14 }}>
+              {session.error}
+            </p>
+            <Button onClick={retry} primary disabled={retrying}>
+              {retrying ? 'Starting…' : 'Try again'}
+            </Button>
+          </Card>
+        )}
+
+        {segments.length > 0 && (
+          <>
+            <Card>
+              <Row label="Who said what">
+                {Math.round((transcript?.enrolled_share ?? 0) * 100)}% you
+              </Row>
+              <Row label="Confidence">
+                {session.attribution_confidence != null
+                  ? `${Math.round(session.attribution_confidence * 100)}%`
+                  : '—'}
+              </Row>
+              <Row label="Length">
+                {session.duration_seconds
+                  ? `${Math.round(session.duration_seconds / 60)} min`
+                  : '—'}
+              </Row>
+              {transcript?.transcribed_in_seconds != null && (
+                <Row label="Processed in" last>
+                  {Math.round(transcript.transcribed_in_seconds)}s across{' '}
+                  {transcript.chunk_count ?? 1} parts
+                </Row>
+              )}
+            </Card>
+
+            {/* I-9: naming the other speaker. Presentation only. */}
+            <Card>
+              <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 8 }}>
+                Who were you speaking with?
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  placeholder="Their name"
+                  maxLength={40}
+                  style={{
+                    flex: 1,
+                    padding: '10px 13px',
+                    borderRadius: 10,
+                    border: `1.5px solid ${COLORS.cardBorder}`,
+                    fontSize: 13,
+                    color: COLORS.textPrimary,
+                  }}
+                />
+                <Button onClick={saveName}>Save</Button>
+              </div>
+            </Card>
+
+            {session.status === 'analysing' && (
+              <Notice tone="info">
+                The transcript below is ready. The interpretation layer is still
+                being built — it is waiting on a decision about how results
+                should be presented.
+              </Notice>
+            )}
+
+            <Card>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  marginBottom: 12,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary }}>
+                  Transcript
+                </div>
+                {/*
+                  Placed on the transcript, not buried in settings. This is the
+                  only screen where a reversed label is noticeable — the user
+                  reads a line and knows immediately whether they said it.
+                */}
+                <button
+                  onClick={swap}
+                  disabled={swapping}
+                  style={{
+                    padding: '7px 13px',
+                    borderRadius: 10,
+                    border: `1px solid ${COLORS.cardBorder}`,
+                    background: 'transparent',
+                    color: COLORS.textSecondary,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: swapping ? 'wait' : 'pointer',
+                    opacity: swapping ? 0.55 : 1,
+                  }}
+                >
+                  {swapping ? 'Swapping…' : 'These are the wrong way round'}
+                </button>
+              </div>
+
+              {session.attribution_corrected && (
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: COLORS.textMuted,
+                    lineHeight: 1.55,
+                    marginBottom: 12,
+                    paddingBottom: 12,
+                    borderBottom: `1px solid ${COLORS.cardBorder}`,
+                  }}
+                >
+                  You corrected the speaker labels on this conversation. Any
+                  analysis reflects the corrected version.
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {segments.map((s, i) => (
+                  <div
+                    key={s.id ?? i}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: s.isEnrolled ? 'flex-end' : 'flex-start',
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 10,
+                        fontWeight: 700,
+                        letterSpacing: 0.5,
+                        textTransform: 'uppercase',
+                        color: s.isEnrolled ? COLORS.blue : COLORS.textMuted,
+                        marginBottom: 4,
+                      }}
+                    >
+                      {s.isEnrolled ? 'You' : themLabel}
+                      <span style={{ fontWeight: 500, marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
+                        {formatClock(s.start)}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        maxWidth: '86%',
+                        padding: '11px 14px',
+                        borderRadius: 14,
+                        background: s.isEnrolled ? COLORS.blue + '10' : COLORS.surface,
+                        border: `1px solid ${s.isEnrolled ? COLORS.blue + '33' : COLORS.cardBorder}`,
+                        fontSize: 13.5,
+                        lineHeight: 1.6,
+                        color: COLORS.textSecondary,
+                      }}
+                    >
+                      {s.text.trim()}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </>
+        )}
+
+        {/* N-2 */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+          <Button onClick={() => router.push('/history')}>Back to history</Button>
+          <Button onClick={remove} danger>
+            Delete recording
+          </Button>
+        </div>
+      </div>
+    </AppShell>
+  );
+}
+
+function formatClock(t: number): string {
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function Spinner({ size = 26 }: { size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        border: `3px solid ${COLORS.cardBorder}`,
+        borderTopColor: COLORS.blue,
+        borderRadius: '50%',
+        animation: 'spin 0.8s linear infinite',
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+function Card({ children, accent }: { children: React.ReactNode; accent?: string }) {
+  return (
+    <div
+      style={{
+        background: COLORS.card,
+        border: `1px solid ${accent ? accent + '44' : COLORS.cardBorder}`,
+        borderRadius: 16,
+        padding: '18px 18px',
+        marginBottom: 14,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Row({ label, children, last }: { label: string; children: React.ReactNode; last?: boolean }) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '9px 0',
+        borderBottom: last ? 'none' : `1px solid ${COLORS.cardBorder}`,
+      }}
+    >
+      <span style={{ fontSize: 12.5, color: COLORS.textMuted }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary }}>{children}</span>
+    </div>
+  );
+}
+
+function Notice({ children, tone }: { children: React.ReactNode; tone: 'danger' | 'info' }) {
+  const color = tone === 'danger' ? COLORS.danger : COLORS.blue;
+  return (
+    <div
+      style={{
+        padding: '12px 14px',
+        borderRadius: 12,
+        background: color + '0E',
+        border: `1px solid ${color}33`,
+        color: tone === 'danger' ? color : COLORS.textSecondary,
+        fontSize: 12.5,
+        lineHeight: 1.6,
+        marginBottom: 14,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Button({
+  children,
+  onClick,
+  primary,
+  danger,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  primary?: boolean;
+  danger?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        padding: '10px 18px',
+        borderRadius: 12,
+        fontSize: 13,
+        fontWeight: 700,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.5 : 1,
+        border: primary ? 'none' : `1px solid ${danger ? COLORS.danger + '55' : COLORS.cardBorder}`,
+        background: primary
+          ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`
+          : 'transparent',
+        color: primary ? COLORS.white : danger ? COLORS.danger : COLORS.textSecondary,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function IntentResultPage() {
+  return (
+    <AuthGuard>
+      <ResultInner />
+    </AuthGuard>
+  );
+}
