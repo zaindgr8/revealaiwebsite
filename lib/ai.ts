@@ -676,6 +676,51 @@ export async function deleteHistoryItem(item: HistoryItem): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+export type MoodPoint = {
+  id: string;
+  created_at: string;
+  mood_score: number;
+};
+
+/**
+ * T-6: mood over time, for the chart on Profile History.
+ *
+ * Its own query rather than a derivation of the history feed, for three
+ * reasons — all of them bugs the shared version actually had.
+ *
+ * The feed is paged. Deriving the chart from it meant the line covered only
+ * whatever page happened to be loaded, so it silently redrew when the user
+ * pressed "Load more" and showed a different trend depending on how far they
+ * had scrolled. A chart of the last 30 rows the UI happens to be holding is not
+ * a chart of anything.
+ *
+ * The feed is three tables. Chat rows carry a mood_score too, but it comes from
+ * a model reading a transcript, while a check-in's comes from acoustic analysis
+ * of a recording. Plotting both on one unlabelled line implies they are the
+ * same measurement, and a dip could mean the user felt worse or merely that
+ * they typed instead of recording. This plots check-ins only, which is also
+ * what /home and /trends do, so the same number now appears everywhere.
+ *
+ * Intent rows made it worse still: they occupy slots in the page and carry no
+ * mood at all, so the more conversations a user recorded the sparser their mood
+ * chart became.
+ *
+ * Selects three columns instead of the whole row. T-5 wants this screen in two
+ * seconds and the chart needs nothing else.
+ */
+export async function getMoodTrend(limit = 60): Promise<MoodPoint[]> {
+  const { data, error } = await supabase
+    .from('therapy_sessions')
+    .select('id, created_at, mood_score')
+    .not('mood_score', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+  // Newest-first from the database so the limit takes the most recent sessions;
+  // reversed here so the line reads left to right.
+  return ((data ?? []) as MoodPoint[]).reverse();
+}
+
 export async function getRecentTherapySessions(limit = 30): Promise<TherapySession[]> {
   const { data, error } = await supabase
     .from('therapy_sessions')
