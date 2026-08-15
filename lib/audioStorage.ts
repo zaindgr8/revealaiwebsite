@@ -73,12 +73,6 @@ export type IntentSession = {
   analysis: unknown | null;
   attribution_confidence: number | null;
   other_speaker_name: string | null;
-  /**
-   * Legacy. The column still exists on intent_sessions from migration 0004 but
-   * nothing writes it any more — automatic retention was removed on 15 August
-   * 2026. Rows created before then still carry a date; it means nothing now.
-   */
-  expires_at: string | null;
   /** Ordered segment paths and durations (migration 0006). */
   segment_paths: string[] | null;
   segment_durations: number[] | null;
