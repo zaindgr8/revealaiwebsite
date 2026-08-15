@@ -87,10 +87,19 @@ export const ENROLLED_LABEL = 'me';
  *
  *   99s, 103s, 126s   against the same 180s limit
  *
- * N-4 now passes with roughly 54 seconds spare for the analysis layer. That
- * margin has not been re-measured since I-5 shipped, and the analysis is a
- * second model call — check it against a 20-minute recording before quoting
- * N-4 as met end to end.
+ * N-4 now passes with roughly 54 seconds spare for the analysis layer.
+ *
+ * Measured end to end on 15 August, once I-5 existed to measure — the same
+ * 19.5-minute recording, two runs, transcription and analysis together:
+ *
+ *   transcribe  81s, 90s      analyse  17s, 19s      total  98s, 109s
+ *
+ * 110s projected for a full 20 minutes against the 180s limit, so 70s spare
+ * rather than 54. Analysis is one model call over the whole transcript, not one
+ * per chunk, so it is added flat rather than projected: a longer recording
+ * makes the prompt longer, not the number of calls larger.
+ *
+ * Re-measure with `measureStability <runs> --file <audio> --analyse`.
  *
  * THIS WAS NOT FREE. The same three runs also moved separation quality:
  *

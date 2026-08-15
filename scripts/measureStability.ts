@@ -43,9 +43,13 @@ import {
   transcribeChunks,
   suppressFragments,
   sliceWav,
+  groupBySpeaker,
+  assessConfidence,
   CHUNK_SECONDS,
   MAX_CONCURRENCY,
 } from '../lib/transcription';
+import { analyseConversation } from '../lib/intentAnalysis';
+import type { IntentScenario } from '../lib/audioStorage';
 
 /**
  * Guards the fragment suppression before any audio is fetched or paid for.
@@ -247,18 +251,34 @@ async function main() {
     const i = process.argv.indexOf(flag);
     return i !== -1 ? process.argv[i + 1] : undefined;
   };
+
+  const withAnalysis = process.argv.includes('--analyse');
+  const scenario = (argValue('--scenario') ?? 'general') as IntentScenario;
+  if (!['date', 'interview', 'general'].includes(scenario)) {
+    console.error('--scenario must be date, interview or general.');
+    process.exit(1);
+  }
+  const GEMINI_KEY = withAnalysis ? env('GEMINI_API_KEY') : '';
   if (!Number.isFinite(chunkSeconds) || chunkSeconds <= 0) {
     console.error('--chunk needs a positive number of seconds.');
     process.exit(1);
   }
 
+  // 'analysing' AND 'complete'. Before I-5 shipped every processed session
+  // stopped at 'analysing' and stayed there, so matching that one status found
+  // the newest usable session. Now they run on to 'complete', and this query
+  // silently found nothing on a database full of them — a lookup that was
+  // correct right up until the pipeline started finishing.
   const sessions = await rest<SessionRow[]>(
     'intent_sessions?select=id,user_id,mime_type,duration_seconds,segment_paths,segment_durations,storage_path' +
-      (wanted ? `&id=eq.${wanted}` : '&status=eq.analysing') +
+      (wanted ? `&id=eq.${wanted}` : '&status=in.(analysing,complete)') +
       '&order=created_at.desc&limit=1'
   );
   if (sessions.length === 0) {
-    console.error('No processed session found. Upload one first, or pass a session id.');
+    console.error(
+      'No processed session found. Upload one first, or pass a session id.\n' +
+        'Only the enrolment reference is taken from it, so any completed session will do.'
+    );
     process.exit(1);
   }
   const s = sessions[0];
@@ -344,6 +364,9 @@ async function main() {
     segments: number;
     share: number;
     elapsed: number;
+    /** I-5 wall clock, or null when --analyse was not passed or I-7 declined. */
+    analysis: number | null;
+    moments: number | null;
   }[] = [];
 
   for (let r = 1; r <= runs; r++) {
@@ -354,14 +377,6 @@ async function main() {
       reference,
       mimeType,
     });
-    results.push({
-      raw: out.rawSpeakers,
-      worstChunk: out.worstChunkSpeakers,
-      stray: out.strayShare,
-      segments: out.segments.length,
-      share: out.enrolledShare,
-      elapsed: out.elapsedSeconds,
-    });
     const ratio = (out.elapsedSeconds / (audioSeconds || 1)).toFixed(2);
     console.log(
       `worst chunk ${out.worstChunkSpeakers} voices, ` +
@@ -371,6 +386,48 @@ async function main() {
         `${(out.enrolledShare * 100).toFixed(0)}% enrolled, ` +
         `${out.elapsedSeconds.toFixed(0)}s (${ratio}x realtime)`
     );
+
+    // N-4 says "completes ANALYSIS within 3 minutes", and until I-5 shipped
+    // this script could only ever measure the transcription half. Both halves
+    // run here, in the same order and on the same data as the two routes do,
+    // so the total is the number the requirement is actually about.
+    let analysisSeconds: number | null = null;
+    let moments: number | null = null;
+    if (withAnalysis) {
+      const confidence = assessConfidence(out);
+      if (!confidence.usable) {
+        // Exactly what the product does: I-7 declines and no analysis call is
+        // made. Recorded as skipped rather than as zero, because zero would
+        // quietly flatter the total.
+        console.log(`         I-7 declined, no analysis run — ${confidence.reason}`);
+      } else {
+        process.stdout.write('         analysing ... ');
+        const t0 = Date.now();
+        const analysis = await analyseConversation({
+          apiKey: GEMINI_KEY,
+          segments: groupBySpeaker(out.segments),
+          scenario,
+          themLabel: 'them',
+        });
+        analysisSeconds = (Date.now() - t0) / 1000;
+        moments = analysis.moments.length;
+        console.log(
+          `${analysisSeconds.toFixed(0)}s, ${moments} moment(s), ` +
+            `total ${(out.elapsedSeconds + analysisSeconds).toFixed(0)}s`
+        );
+      }
+    }
+
+    results.push({
+      raw: out.rawSpeakers,
+      worstChunk: out.worstChunkSpeakers,
+      stray: out.strayShare,
+      segments: out.segments.length,
+      share: out.enrolledShare,
+      elapsed: out.elapsedSeconds,
+      analysis: analysisSeconds,
+      moments,
+    });
   }
 
   const spread = (xs: number[]) => ({
@@ -428,20 +485,48 @@ async function main() {
   const waves = Math.ceil(chunks.length / MAX_CONCURRENCY);
   const perWave = tm.max / waves;
   // What a full 20 minutes would cost at this speed, in the same wave shape.
-  const projected = perWave * Math.ceil(1200 / CHUNK_SECONDS / MAX_CONCURRENCY);
+  const projectedTranscribe = perWave * Math.ceil(1200 / CHUNK_SECONDS / MAX_CONCURRENCY);
+
+  // Analysis does NOT scale with wave count. It is one model call over the
+  // whole transcript, so the slowest observed one is added flat rather than
+  // projected — a longer recording makes the prompt longer, not the number of
+  // calls larger.
+  const analysisTimes = results.map((r) => r.analysis).filter((x): x is number => x !== null);
+  const slowestAnalysis = analysisTimes.length > 0 ? Math.max(...analysisTimes) : 0;
+  const projected = projectedTranscribe + slowestAnalysis;
+
+  if (analysisTimes.length > 0) {
+    const momentCounts = results.map((r) => r.moments).filter((x): x is number => x !== null);
+    console.log(
+      `analysis     ${Math.min(...analysisTimes).toFixed(0)}-${slowestAnalysis.toFixed(0)}s   ` +
+        `${Math.min(...momentCounts)}-${Math.max(...momentCounts)} moments`
+    );
+    console.log(
+      `N-4 total    ${projected.toFixed(0)}s projected for 20 minutes   ` +
+        `(${projectedTranscribe.toFixed(0)}s transcribe + ${slowestAnalysis.toFixed(0)}s analyse)`
+    );
+  }
+
+  const caveat = withAnalysis
+    ? ''
+    : '\n     Transcription only — pass --analyse to include the I-5 call, which\n' +
+      '     runs afterwards and lands on top of this.';
 
   if (projected > N4_LIMIT_SECONDS) {
     console.log(
       `\nN-4 FAILS: slowest run projects to ${(projected / 60).toFixed(1)} minutes for a\n` +
-        `     20-minute recording, against a ${N4_LIMIT_SECONDS / 60}-minute limit.\n` +
-        '     This is transcription only. The I-5 analysis runs afterwards in\n' +
-        '     /api/intent/analyse and its time lands on top of this.'
+        `     20-minute recording, against a ${N4_LIMIT_SECONDS / 60}-minute limit.${caveat}`
     );
   } else if (projected > N4_LIMIT_SECONDS * 0.85) {
     console.log(
       `\nN-4 MARGINAL: ${(projected / 60).toFixed(1)} minutes projected against a ` +
-        `${N4_LIMIT_SECONDS / 60}-minute limit,\n` +
-        '     and the I-5 analysis time is not included. Re-measure before relying on it.'
+        `${N4_LIMIT_SECONDS / 60}-minute limit.${caveat}`
+    );
+  } else if (withAnalysis) {
+    console.log(
+      `\nN-4 PASSES end to end: ${projected.toFixed(0)}s against a ${N4_LIMIT_SECONDS}s limit, ` +
+        `${(N4_LIMIT_SECONDS - projected).toFixed(0)}s spare.\n` +
+        '     One measurement is a sample. These numbers move between runs.'
     );
   }
 }
