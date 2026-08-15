@@ -315,6 +315,11 @@ export async function swapSpeakerAttribution(sessionId: string): Promise<IntentS
 
   const segments = transcript.segments.map((s) => ({ ...s, isEnrolled: !s.isEnrolled }));
 
+  // Any existing analysis is now describing the wrong person — every finding
+  // about "them" was drawn from lines that turn out to be the user's own. That
+  // is worse than having no analysis, so it is discarded and the session drops
+  // back to 'analysing' to be redone against the corrected labels. The result
+  // page already promises the user exactly this.
   const { data, error } = await supabase
     .from('intent_sessions')
     .update({
@@ -326,6 +331,9 @@ export async function swapSpeakerAttribution(sessionId: string): Promise<IntentS
             ? 1 - transcript.enrolled_share
             : undefined,
       },
+      analysis: null,
+      summary: null,
+      status: session.status === 'complete' ? 'analysing' : session.status,
       attribution_corrected: true,
       attribution_corrected_at: new Date().toISOString(),
     })
@@ -549,6 +557,28 @@ export async function startProcessing(sessionId: string): Promise<void> {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(body?.error || 'Could not start processing');
+}
+
+/**
+ * I-5. Runs the analysis over a transcript that is already stored.
+ *
+ * Separate from startProcessing because the two halves fail independently: a
+ * session can have a perfectly good transcript and a failed analysis, and that
+ * should cost one retry of the cheap half rather than re-transcribing the audio.
+ */
+export async function startAnalysis(sessionId: string): Promise<void> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token ?? '';
+  const res = await fetch('/api/intent/analyse', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error || 'Could not start the analysis');
 }
 
 /** Short-lived signed URL for playback or for handing to a processing job. */

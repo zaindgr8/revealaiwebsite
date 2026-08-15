@@ -9,12 +9,14 @@ import {
   deleteIntentSession,
   getIntentSession,
   nameOtherSpeaker,
+  startAnalysis,
   startProcessing,
   swapSpeakerAttribution,
   type IntentSession,
   type IntentStatus,
 } from '@/lib/audioStorage';
 import type { Segment } from '@/lib/transcription';
+import { signalTone, type IntentAnalysis } from '@/lib/intentAnalysis';
 
 /**
  * Intent Detector result screen.
@@ -46,7 +48,7 @@ const STATUS_COPY: Record<IntentStatus, { title: string; detail: string }> = {
   },
   analysing: {
     title: 'Reading the conversation',
-    detail: 'The transcript is ready. Interpretation is the next step.',
+    detail: 'The transcript is ready. Working through what stood out.',
   },
   complete: { title: 'Done', detail: '' },
   insufficient_quality: {
@@ -67,7 +69,12 @@ function ResultInner() {
   const [nameDraft, setNameDraft] = useState('');
   const [retrying, setRetrying] = useState(false);
   const [swapping, setSwapping] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Polling means 'analysing' is seen repeatedly. Without this the page would
+  // fire a fresh analysis every four seconds; the route is idempotent, but only
+  // after the first one has finished writing.
+  const analysisFiredRef = useRef(false);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -85,6 +92,17 @@ function ResultInner() {
         setSession(s);
         setNameDraft((prev) => prev || s.other_speaker_name || '');
         setLoading(false);
+
+        // I-5. Transcription hands over at 'analysing' and stops; this is what
+        // picks the session up. Kicked from the page rather than chained inside
+        // /api/intent/process so the two halves keep separate time budgets and
+        // separate retries.
+        if (s.status === 'analysing' && !analysisFiredRef.current) {
+          analysisFiredRef.current = true;
+          startAnalysis(s.id).catch((e) => {
+            if (!cancelled) setAnalysisError((e as Error).message);
+          });
+        }
 
         // Stop polling once there is nothing left to wait for.
         if (!TERMINAL_STATUSES.includes(s.status)) {
@@ -126,12 +144,30 @@ function ResultInner() {
     }
   };
 
+  /** Re-runs I-5 over an existing transcript. No re-transcription, no re-upload. */
+  const reanalyse = async (sessionToRead: IntentSession) => {
+    setAnalysisError(null);
+    analysisFiredRef.current = true;
+    try {
+      await startAnalysis(sessionToRead.id);
+      setSession(await getIntentSession(sessionToRead.id));
+    } catch (e) {
+      setAnalysisError((e as Error).message);
+    }
+  };
+
   const swap = async () => {
     if (!session || swapping) return;
     setSwapping(true);
     setError(null);
     try {
-      setSession(await swapSpeakerAttribution(session.id));
+      // The swap discards any analysis and drops the session back to
+      // 'analysing', because every finding in it was drawn from lines that have
+      // just changed owner. Re-running is not optional here.
+      const swapped = await swapSpeakerAttribution(session.id);
+      setSession(swapped);
+      analysisFiredRef.current = false;
+      if (swapped.status === 'analysing') void reanalyse(swapped);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -185,6 +221,7 @@ function ResultInner() {
   const segments = transcript?.segments ?? [];
   const themLabel = session.other_speaker_name?.trim() || 'Them';
   const inProgress = !TERMINAL_STATUSES.includes(session.status);
+  const analysis = session.analysis as IntentAnalysis | null;
 
   return (
     <AppShell
@@ -296,13 +333,43 @@ function ResultInner() {
               </div>
             </Card>
 
-            {session.status === 'analysing' && (
-              <Notice tone="info">
-                The transcript below is ready. The interpretation layer is still
-                being built — it is waiting on a decision about how results
-                should be presented.
-              </Notice>
+            {/* I-5 */}
+            {analysisError && (
+              <Card accent={COLORS.danger}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 6 }}>
+                  The analysis did not finish
+                </div>
+                <p style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6, marginBottom: 12 }}>
+                  {analysisError}
+                </p>
+                <p style={{ fontSize: 12, color: COLORS.textMuted, lineHeight: 1.6, marginBottom: 14 }}>
+                  Your transcript is safe and is below. Only the reading of it
+                  needs to run again.
+                </p>
+                <Button onClick={() => void reanalyse(session)} primary>
+                  Try the analysis again
+                </Button>
+              </Card>
             )}
+
+            {session.status === 'analysing' && !analysisError && (
+              <Card>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+                  <Spinner size={20} />
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
+                      Reading the conversation
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 3, lineHeight: 1.5 }}>
+                      Going back over what {themLabel.toLowerCase()} said. The
+                      transcript is below in the meantime.
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {analysis && <AnalysisView analysis={analysis} themLabel={themLabel} />}
 
             <Card>
               <div
@@ -412,6 +479,153 @@ function ResultInner() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+/**
+ * I-5, as the client asked for it on 14 August:
+ *
+ *   "it needs to tell that at 'this' point the other person was trying to
+ *    manipulate, he was maybe faking this thing."
+ *
+ * So each finding leads with a timestamp and the words that prompted it, and
+ * the reading comes last. The quote is not decoration — it is what lets the
+ * user check the claim against their own memory of the conversation, and it is
+ * how a misattributed line gives itself away.
+ *
+ * No scores anywhere. That is D-1, answered.
+ */
+function AnalysisView({
+  analysis,
+  themLabel,
+}: {
+  analysis: IntentAnalysis;
+  themLabel: string;
+}) {
+  const toneColor = (signal: string) => {
+    const tone = signalTone(signal);
+    if (tone === 'concern') return COLORS.warning;
+    if (tone === 'positive') return COLORS.green;
+    return COLORS.textMuted;
+  };
+
+  return (
+    <>
+      {analysis.overall && (
+        <Card>
+          <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 9 }}>
+            How {themLabel.toLowerCase()} came across
+          </div>
+          <p style={{ fontSize: 13.5, color: COLORS.textSecondary, lineHeight: 1.7 }}>
+            {analysis.overall}
+          </p>
+        </Card>
+      )}
+
+      <Card>
+        <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 4 }}>
+          Moments worth a second look
+        </div>
+
+        {analysis.moments.length === 0 ? (
+          // A conversation where nothing stood out is a real answer, not an
+          // empty state. Saying so beats inventing something to fill the card.
+          <p style={{ fontSize: 13, color: COLORS.textMuted, lineHeight: 1.65, marginTop: 8 }}>
+            Nothing in this conversation stood out enough to point at. That is
+            usually what an ordinary conversation looks like.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 14 }}>
+            {analysis.moments.map((m, i) => {
+              const color = toneColor(m.signal);
+              return (
+                <div
+                  key={`${m.at}-${i}`}
+                  style={{
+                    borderLeft: `3px solid ${color}`,
+                    paddingLeft: 13,
+                    paddingTop: 2,
+                    paddingBottom: 2,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 7 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: COLORS.textPrimary,
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    >
+                      {formatClock(m.at)}
+                    </span>
+                    <span
+                      style={{
+                        background: color + '1A',
+                        color,
+                        padding: '2px 9px',
+                        borderRadius: 7,
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: 'capitalize',
+                      }}
+                    >
+                      {m.signal}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontStyle: 'italic',
+                      color: COLORS.textSecondary,
+                      lineHeight: 1.6,
+                      marginBottom: 8,
+                    }}
+                  >
+                    “{m.quote}”
+                  </div>
+
+                  {m.observation && (
+                    <div style={{ fontSize: 13, color: COLORS.textPrimary, lineHeight: 1.65 }}>
+                      {m.observation}
+                    </div>
+                  )}
+                  {m.reading && (
+                    <div style={{ fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.65, marginTop: 4 }}>
+                      {m.reading}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/*
+          Standing, not dismissible. This is a reading of a real person who was
+          not asked whether they wanted to be read, produced from words on a
+          page with no tone of voice and no face attached. The user should have
+          that in front of them at the same time as the findings, not buried in
+          settings where it exists only to have been said.
+        */}
+        <p
+          style={{
+            fontSize: 11.5,
+            color: COLORS.textMuted,
+            lineHeight: 1.65,
+            marginTop: 18,
+            paddingTop: 14,
+            borderTop: `1px solid ${COLORS.cardBorder}`,
+          }}
+        >
+          These are possibilities drawn from the words alone — not conclusions,
+          and not evidence of anything. There is no tone of voice here and no
+          face to read. You were there and this was not, so where the two of you
+          disagree, you are right.
+        </p>
+      </Card>
+    </>
   );
 }
 

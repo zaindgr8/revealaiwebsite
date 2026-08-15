@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:crisis": "npx tsx scripts/runCrisisTests.ts",
     "test:memory": "npx tsx scripts/runMemoryTests.ts",
+    "test:intent": "npx tsx scripts/testIntentAnalysis.ts",
     "demo:memory": "npx tsx scripts/runMemoryTests.ts",
     "demo:windows": "npx tsx scripts/runMemoryTests.ts --windows",
     "demo:prompt": "npx tsx scripts/runMemoryTests.ts --prompt"

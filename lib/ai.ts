@@ -590,7 +590,7 @@ export async function getHistoryFeed({
   // explanation.
   let intents = supabase
     .from('intent_sessions')
-    .select('id, created_at, scenario, status, other_speaker_name, attribution_confidence')
+    .select('id, created_at, scenario, status, other_speaker_name, attribution_confidence, summary')
     .in('status', ['analysing', 'complete', 'insufficient_quality'])
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -644,9 +644,12 @@ export async function getHistoryFeed({
         // No mood score, deliberately. See the note on HistoryItem.kind.
         mood_score: null,
         label: (r.scenario as string) ?? 'conversation',
+        // I-5 writes its overall read into `summary`, which is the only line
+        // here with anything specific to say. The fallback covers sessions
+        // still being analysed and the ones recorded before I-5 existed.
         excerpt: unreadable
           ? 'This recording could not be read clearly enough to analyse.'
-          : `Conversation with ${who}.`,
+          : (r.summary as string) || `Conversation with ${who}.`,
         topics: null,
         crisis_flagged: false,
       };

@@ -17,11 +17,11 @@ import {
  * N-8 asks for processing to run as a background job with visible status, so
  * this returns as soon as the work is dispatched and the client polls the row.
  *
- * The analysis step is not built. It is blocked on decision D-1, which decides
- * whether the output carries scores or observations — and that changes the
- * schema, not just the wording. The session therefore stops at 'analysing'
- * with a stored transcript, which is genuinely useful on its own and is what
- * Demo 4 shows.
+ * This route stops at 'analysing' with a stored transcript. The analysis itself
+ * (I-5) lives in /api/intent/analyse and is kicked off by the result page when
+ * it sees that status — transcribing 20 minutes of audio already runs to about
+ * two minutes against the 300-second ceiling below, and a failed analysis
+ * should not cost a second transcription of the same audio.
  */
 
 export const maxDuration = 300;
