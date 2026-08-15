@@ -144,3 +144,66 @@ alone.
 `agent/learning_graph.py`, which keeps durable user facts separate from the
 transcript. The separation is the idea worth taking. The graph, the skill
 mutation, and the rest of it are not.
+
+---
+
+### P2-3 — Speech enhancement before diarization
+
+**Status: tested 15 August 2026 and rejected for now.** Recorded here because
+the headline numbers say ship it and they are wrong, so anyone who reads the
+LavaSR paper and reaches for it again should see the measurements first.
+
+The idea is sound on its face: run a speech-enhancement model over the audio
+before transcription so the diarizer gets a clean signal. LavaSR is a good
+candidate — 50MB, Vocos-based, Interspeech 2026, and genuinely fast, measured
+here at 6.8s (denoise only) and 10.7s (with bandwidth extension) for six
+minutes of audio on CPU, no GPU needed.
+
+Measured on the 12 August recording, 180s chunks, everything else held fixed:
+
+| | voices | stray | attributed to the user | I-4 mirror |
+|---|---|---|---|---|
+| baseline, no enhancement | 5 | 7% | **60%** | **91.7%** |
+| denoiser only | 3 | 12% | 7% | — |
+| full, recording enhanced only | 2 | **0%** | **0%** | — |
+| full, recording and reference both enhanced | 2 | **0%** | 31% | could not run |
+
+**Read the last two columns, not the first two.**
+
+Enhancement makes separation look perfect. Five voices become two, stray goes
+to zero. Every metric the pipeline had before today improves, and one of them
+improves to a clean sweep.
+
+Attribution gets worse at the same time. The true split on this recording is
+about 58/42 by turn duration; baseline reports 60% and the enhanced version
+reports 31%, so roughly a quarter of the conversation changes hands. The output
+is cleaner and more wrong, which is the single most dangerous shape a change
+can have here — it would have looked like a win on every number being watched.
+
+Two further findings worth keeping:
+
+**Enhancing one side breaks matching completely.** The stored enrolment clip is
+raw and the recording was processed, so they no longer sounded like the same
+person and the enrolled share fell to zero. Any preprocessing has to be applied
+to the enrolment reference too, or I-7 rejects every session with "we could not
+find your voice".
+
+**On enhanced audio, a reference clip of pure silence matched a real speaker.**
+That is why the I-4 mirror test could not run — `testAttribution.ts` needs two
+non-enrolled voices in the first chunk and only found one. A silent reference
+matching a person means voiceprint discrimination has collapsed, which is the
+mechanism behind the attribution loss: generative restoration rebuilds fine
+spectral detail from a prior trained on VCTK, a single-speaker corpus, so both
+speakers come back partly wearing the same voice.
+
+**When to revisit.** The noisy-recording case, which still has no measurements
+against it. If a noisy two-person recording fails I-7 outright, trading
+attribution accuracy for any result at all may be the right trade — but that is
+a judgement to make against a measurement, and the measurement does not exist
+yet. Test the denoiser alone before the full model; the bandwidth extension is
+the half that does the damage, and the pipeline resamples to 16kHz immediately,
+which discards most of what it produces anyway.
+
+**One thing this did establish.** Baseline attribution on real product audio
+measures **91.7% against I-4's 90% bar** — the first time that requirement has
+been checked on a recording the product actually failed on, and it passes.

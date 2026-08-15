@@ -35,7 +35,7 @@
  *                sitting right on the limit still reports a flattering 0.15x.
  */
 
-import { readFileSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -243,6 +243,10 @@ async function main() {
   // changing it can be measured before shipping the change.
   const chunkFlag = process.argv.indexOf('--chunk');
   const chunkSeconds = chunkFlag !== -1 ? Number(process.argv[chunkFlag + 1]) : CHUNK_SECONDS;
+  const argValue = (flag: string): string | undefined => {
+    const i = process.argv.indexOf(flag);
+    return i !== -1 ? process.argv[i + 1] : undefined;
+  };
   if (!Number.isFinite(chunkSeconds) || chunkSeconds <= 0) {
     console.error('--chunk needs a positive number of seconds.');
     process.exit(1);
@@ -268,10 +272,39 @@ async function main() {
     process.exit(1);
   }
 
-  // The enrolment reference always comes from the database, even for a local
-  // file. It is the voiceprint the product actually ships with, so measuring
-  // against anything else would measure a system nobody runs.
-  const reference = { data: await download('voice-enrollments', referencePath), mimeType: 'audio/wav' };
+  // The enrolment reference normally comes from the database even for a local
+  // file, because it is the voiceprint the product actually ships with and
+  // measuring against anything else would measure a system nobody runs.
+  //
+  // --save-reference / --reference exist for one specific question: what any
+  // preprocessing step does to voiceprint MATCHING, as opposed to what it does
+  // to separation. Those are different things and they moved in opposite
+  // directions the first time this was measured — audio enhancement took the
+  // recording from 5 voices to 2 and 7% stray to 0%, while the share matched to
+  // the enrolled speaker fell from 60% to nothing, because the recording had
+  // been processed and the stored reference had not. Separation looked perfect
+  // and the product would have been unusable.
+  //
+  // Any preprocessing has to be applied to BOTH sides to be judged fairly, and
+  // these flags are how that is done.
+  const savePath = argValue('--save-reference');
+  const localReference = argValue('--reference');
+
+  const referenceBytes = localReference
+    ? (() => {
+        const buf = readFileSync(localReference);
+        return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+      })()
+    : await download('voice-enrollments', referencePath);
+
+  if (savePath) {
+    writeFileSync(savePath, Buffer.from(await download('voice-enrollments', referencePath)));
+    console.log(`enrolment reference written to ${savePath}`);
+    return;
+  }
+
+  const reference = { data: referenceBytes, mimeType: 'audio/wav' };
+  if (localReference) console.log(`reference ${localReference}  (NOT the stored one)`);
 
   let chunks: { data: ArrayBuffer; offsetSeconds: number }[];
   let audioSeconds: number;
