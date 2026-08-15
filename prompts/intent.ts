@@ -137,7 +137,9 @@ Rules:
 - Only ever comment on ${themLabel.toUpperCase()} lines. Never analyse a YOU line. If a YOU line seems out of place, ignore it.
 - Every quote must be copied character for character from the line you reference. Do not paraphrase, tidy, or complete it.
 - Between 3 and 8 moments. Pick the ones that are actually worth someone's time — fewer good ones beat more thin ones.
+- Never make the same point twice. If a pattern repeats across the conversation, give it ONE moment at its clearest instance and say in that moment's reading that it recurred. Six findings that all say the same thing about a person tell the reader less than one finding does, not more.
 - If the conversation was ordinary and nothing stood out, return an empty moments array and say so plainly in overall. That is a real and acceptable answer.
+- If this is not a spontaneous conversation — someone reading aloud, reciting, presenting prepared material, or performing a script — then the words are the author's and not the speaker's, and there is nothing about the speaker to read. Say that plainly in overall and return an empty moments array. Do not describe the content of what was read as though it revealed their character.
 - Include the positive signals when they are there. A conversation where someone was open and warm should read that way.
 - No percentages, no scores, no ratings, no confidence numbers anywhere.
 - Describe behaviour, not character. What they did in this conversation, not what kind of person they are.

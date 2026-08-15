@@ -219,7 +219,11 @@ function ResultInner() {
     | { segments?: Segment[]; enrolled_share?: number; chunk_count?: number; transcribed_in_seconds?: number }
     | null;
   const segments = transcript?.segments ?? [];
+  // Two forms, because one of them is a name and the other is a pronoun.
+  // themLabel heads the transcript, where 'Them' is a column title. themName
+  // goes in sentences, where lowercasing it turns Ahmed into ahmed.
   const themLabel = session.other_speaker_name?.trim() || 'Them';
+  const themName = session.other_speaker_name?.trim() || 'them';
   const inProgress = !TERMINAL_STATUSES.includes(session.status);
   const analysis = session.analysis as IntentAnalysis | null;
 
@@ -361,15 +365,15 @@ function ResultInner() {
                       Reading the conversation
                     </div>
                     <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 3, lineHeight: 1.5 }}>
-                      Going back over what {themLabel.toLowerCase()} said. The
-                      transcript is below in the meantime.
+                      Going back over what {themName} said. The transcript is
+                      below in the meantime.
                     </div>
                   </div>
                 </div>
               </Card>
             )}
 
-            {analysis && <AnalysisView analysis={analysis} themLabel={themLabel} />}
+            {analysis && <AnalysisView analysis={analysis} themName={themName} />}
 
             <Card>
               <div
@@ -497,10 +501,10 @@ function ResultInner() {
  */
 function AnalysisView({
   analysis,
-  themLabel,
+  themName,
 }: {
   analysis: IntentAnalysis;
-  themLabel: string;
+  themName: string;
 }) {
   const toneColor = (signal: string) => {
     const tone = signalTone(signal);
@@ -514,7 +518,7 @@ function AnalysisView({
       {analysis.overall && (
         <Card>
           <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 9 }}>
-            How {themLabel.toLowerCase()} came across
+            How {themName} came across
           </div>
           <p style={{ fontSize: 13.5, color: COLORS.textSecondary, lineHeight: 1.7 }}>
             {analysis.overall}

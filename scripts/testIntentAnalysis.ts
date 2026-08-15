@@ -57,6 +57,37 @@ const FIXTURE: Segment[] = [
   seg(12, 'I would like that too.', true, 94),
 ];
 
+/**
+ * Two people reading a prepared document aloud, alternating.
+ *
+ * This is not hypothetical. On 15 August a six-minute test recording made
+ * exactly this way — the two of them reading the demo plan a sentence each to
+ * generate test audio — produced six confident findings about how transparent
+ * and principled the other person was. Every quote was a line from a document
+ * neither of them wrote. The output was well formed, plausible, and about
+ * nobody.
+ *
+ * It is also the trap anyone reaches for first, because reading something
+ * aloud is the obvious way to produce a test recording on demand.
+ *
+ * The right answer is an empty moments array: the words belong to the author,
+ * so there is nothing here to read about the speaker.
+ */
+const SCRIPTED: Segment[] = [
+  seg(0, 'Okay, so we each read one sentence, and we keep going until we have six minutes. Ready?', true, 0),
+  seg(1, 'Ready. Demo one, the data actually saves. This is the problem you reported first, so it gets fixed first.', false, 7),
+  seg(2, 'What you will see: I type a message in the chat, close the browser completely, reopen it, and the message is still there.', true, 17),
+  seg(3, 'Why it matters. Everything else sits on top of this until it works. Nothing else can be trusted.', false, 27),
+  seg(4, 'What I will tell you is whether the bug was a simple fix or a structural problem.', true, 35),
+  seg(5, 'If it is structural, the three week date is at risk, and you hear that on day two rather than in week three.', false, 42),
+  seg(6, 'Demo two. A chat that remembers you. The single most convincing thing in this build.', true, 51),
+  seg(7, 'This is the highest risk item in the project, and demoing it early and ugly is deliberate.', false, 59),
+  seg(8, 'A demo where everything is perfect is a demo where something is being hidden.', true, 68),
+  seg(9, 'Scope freezes on the twelfth. After that, changes move the delivery date, and I will tell you by how much before agreeing to them.', false, 75),
+  seg(10, 'How long was that?', true, 86),
+  seg(11, 'Six minutes. That should be enough.', false, 89),
+];
+
 let failures = 0;
 
 function check(name: string, condition: boolean, detail = '') {
@@ -218,6 +249,35 @@ async function live() {
         `\nprompt the model keeps failing is a prompt worth rereading.`
     );
   }
+
+  // Every finding carrying the same signal is what the 15 August failure looked
+  // like from the outside, before anyone noticed the recording was two people
+  // reading. One note repeated is not six findings.
+  const distinct = new Set(analysis.moments.map((m) => m.signal)).size;
+  if (analysis.moments.length >= 3 && distinct === 1) {
+    console.log(
+      `\nAll ${analysis.moments.length} findings carry the same signal. Check whether that is` +
+        `\nthe conversation or the model making one point repeatedly.`
+    );
+  }
+
+  console.log(`\n${'─'.repeat(60)}`);
+  console.log('scripted-material check (two people reading a document aloud)\n');
+  const scripted = await analyseConversation({
+    apiKey: env('GEMINI_API_KEY'),
+    segments: SCRIPTED,
+    scenario: 'general',
+    themLabel: 'Ahmed',
+  });
+  console.log(`overall  ${scripted.overall}\n`);
+  for (const m of scripted.moments) {
+    console.log(`  [${m.signal}] "${m.quote}" — ${m.reading}`);
+  }
+  check(
+    'declines to read character off recited material',
+    scripted.moments.length === 0,
+    `returned ${scripted.moments.length} finding(s) about words the speaker did not write`
+  );
 }
 
 async function main() {
