@@ -250,6 +250,22 @@ async function live() {
     );
   }
 
+  // The 15 August podcast run got every finding right and then addressed them
+  // all to the wrong person — "You came across as highly engaged" about the
+  // OTHER speaker, because the prompt said "second person" and the model read
+  // that as an instruction to call the subject "you". Correct findings, wrong
+  // grammar, and it reads to the user as though the product analysed them.
+  //
+  // A sentence starting "You <verb>" is the signature. "toward you" mid-sentence
+  // is fine and correct — the reader is in the conversation.
+  const addressed = [analysis.overall, ...analysis.moments.flatMap((m) => [m.observation, m.reading])]
+    .filter((t) => /(^|[.!?]\s+)You\b/.test(t));
+  check(
+    'writes about the other person, not to them',
+    addressed.length === 0,
+    addressed[0] ? `"${addressed[0].slice(0, 70)}…"` : ''
+  );
+
   // Every finding carrying the same signal is what the 15 August failure looked
   // like from the outside, before anyone noticed the recording was two people
   // reading. One note repeated is not six findings.

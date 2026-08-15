@@ -118,13 +118,13 @@ The transcript is numbered. Each line is marked YOU (the person you are writing 
 Return JSON only, matching this shape exactly:
 
 {
-  "overall": "<2 to 4 sentences on how the other person came across across the whole conversation. Written to the user, second person, about the other person. Specific to THIS conversation.>",
+  "overall": "<2 to 4 sentences on how ${themLabel} came across across the whole conversation. Specific to THIS conversation.>",
   "moments": [
     {
       "ref": <the [n] of a ${themLabel.toUpperCase()} line>,
       "quote": "<a short phrase copied EXACTLY from that line, 3 to 20 words>",
       "signal": "<one of: ${INTENT_SIGNALS.join(', ')}>",
-      "observation": "<one sentence. What they did here. Describe it plainly, as something a person listening back would agree happened.>",
+      "observation": "<one sentence. What ${themLabel} did here. Describe it plainly, as something a person listening back would agree happened.>",
       "reading": "<one sentence. What it might mean. Hedged — this is a possibility you are offering, not a fact you established.>"
     }
   ]
@@ -135,6 +135,7 @@ ${SIGNAL_GUIDE}
 
 Rules:
 - Only ever comment on ${themLabel.toUpperCase()} lines. Never analyse a YOU line. If a YOU line seems out of place, ignore it.
+- You are writing TO the reader ABOUT ${themLabel}. Call ${themLabel} "${themLabel}" or "they". NEVER call ${themLabel} "you", and never address ${themLabel} directly — "you" would mean the reader, who is not the subject of any of this. The reader has to be able to tell at a glance that none of it is about them.
 - Every quote must be copied character for character from the line you reference. Do not paraphrase, tidy, or complete it.
 - Between 3 and 8 moments. Pick the ones that are actually worth someone's time — fewer good ones beat more thin ones.
 - Never make the same point twice. If a pattern repeats across the conversation, give it ONE moment at its clearest instance and say in that moment's reading that it recurred. Six findings that all say the same thing about a person tell the reader less than one finding does, not more.
