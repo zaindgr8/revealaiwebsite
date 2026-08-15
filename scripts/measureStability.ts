@@ -434,14 +434,14 @@ async function main() {
     console.log(
       `\nN-4 FAILS: slowest run projects to ${(projected / 60).toFixed(1)} minutes for a\n` +
         `     20-minute recording, against a ${N4_LIMIT_SECONDS / 60}-minute limit.\n` +
-        '     This is transcription only — analysis (I-5) is not built and its\n' +
-        '     time lands on top of this.'
+        '     This is transcription only. The I-5 analysis runs afterwards in\n' +
+        '     /api/intent/analyse and its time lands on top of this.'
     );
   } else if (projected > N4_LIMIT_SECONDS * 0.85) {
     console.log(
       `\nN-4 MARGINAL: ${(projected / 60).toFixed(1)} minutes projected against a ` +
         `${N4_LIMIT_SECONDS / 60}-minute limit,\n` +
-        '     and analysis time is not included. Re-measure before relying on it.'
+        '     and the I-5 analysis time is not included. Re-measure before relying on it.'
     );
   }
 }

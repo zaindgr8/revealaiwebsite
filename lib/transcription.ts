@@ -21,9 +21,9 @@
  *   163s, 180s, 213s   against N-4's 180s limit
  *
  * One pass, one exactly on the line, one failure — and that is transcription
- * alone, before the analysis layer that does not yet exist. Same audio, same
- * settings, a 1.3x spread between runs, so any single measurement of this API
- * is a sample and not a number.
+ * alone, before the analysis in /api/intent/analyse, whose time lands on top.
+ * Same audio, same settings, a 1.3x spread between runs, so any single
+ * measurement of this API is a sample and not a number.
  *
  * CHUNK_SECONDS and MAX_CONCURRENCY were resized against those figures rather
  * than the flattering one. Re-measure with scripts/measureStability.ts before
@@ -74,8 +74,8 @@ export const ENROLLED_LABEL = 'me';
  *
  * One pass, one exactly on the line, one failure. The requirement is "a
  * 20-minute recording completes analysis within 3 minutes", and that was
- * transcription alone — the analysis layer does not exist yet and its time
- * lands on top.
+ * transcription alone — the I-5 analysis runs afterwards in
+ * /api/intent/analyse and its time lands on top.
  *
  * Wall time is roughly ceil(chunks / concurrency) waves, each costing about one
  * chunk's processing time. Per-chunk cost measured at 0.55-0.71x of chunk
@@ -87,7 +87,10 @@ export const ENROLLED_LABEL = 'me';
  *
  *   99s, 103s, 126s   against the same 180s limit
  *
- * N-4 now passes with roughly 54 seconds spare for the analysis layer.
+ * N-4 now passes with roughly 54 seconds spare for the analysis layer. That
+ * margin has not been re-measured since I-5 shipped, and the analysis is a
+ * second model call — check it against a 20-minute recording before quoting
+ * N-4 as met end to end.
  *
  * THIS WAS NOT FREE. The same three runs also moved separation quality:
  *
