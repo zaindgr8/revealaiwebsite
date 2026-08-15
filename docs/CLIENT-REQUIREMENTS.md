@@ -179,7 +179,7 @@ both change.
 | D-1 — percentages or observations | **answered 14 Aug: observations, pinned to moments.** Built. | — |
 | D-2 — second-party consent reviewed by a lawyer | no need for the other person review as the user is uploading the conversation , this person is the one who is responsible for the consent | Consent wording |
 | D-3 — who writes privacy policy and terms | they will , we dont need to add it ourself | Consent copy, launch |
-| D-4 — retention period | Assumed 90 days | Retention job |
+| D-4 — retention period | **Closed 15 Aug: no automatic retention.** Removed at Shayan's direction — consent is taken from the uploader on behalf of both parties, and users can delete their own data (N-2). Recordings are now kept until deleted by hand. | — |
 | D-5 — is the Team tier coming | Unanswered | Data model, risk profile |
 | D-6 — voice or text therapist | text | Scope, estimate |
 | Crisis helpline numbers | Not requested so we shouldnet bult that unless explicitly requested | Escalation screen is empty |
@@ -197,5 +197,6 @@ depends on them.
    does not state that the client must *supply the keys*. `GEMINI_API_KEY` is
    missing, which leaves every AI feature non-functional locally.
 
-Also needed and not yet listed anywhere: `SUPABASE_SERVICE_ROLE_KEY` and
-`CRON_SECRET` for the retention job.
+Also needed and not yet listed anywhere: `SUPABASE_SERVICE_ROLE_KEY`.
+`CRON_SECRET` is no longer required — automatic retention was removed on
+15 August 2026, see D-4 below.

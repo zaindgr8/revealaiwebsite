@@ -13,15 +13,6 @@ import { REFERENCE_SECONDS, buildReferenceClip } from './audioTrim';
 export const ENROLLMENT_BUCKET = 'voice-enrollments';
 export const RECORDING_BUCKET = 'intent-recordings';
 
-/**
- * N-5 retention window.
- *
- * BLOCKED ON CLIENT (D-4) for the real number. 30 days is a placeholder that
- * lets the mechanism be built and tested — the mechanism does not depend on
- * the answer, only this constant does.
- */
-export const RETENTION_DAYS = 30;
-
 /** I-1 requires at least 10 seconds of enrolled voice. */
 export const MIN_ENROLLMENT_SECONDS = 10;
 
@@ -82,6 +73,11 @@ export type IntentSession = {
   analysis: unknown | null;
   attribution_confidence: number | null;
   other_speaker_name: string | null;
+  /**
+   * Legacy. The column still exists on intent_sessions from migration 0004 but
+   * nothing writes it any more — automatic retention was removed on 15 August
+   * 2026. Rows created before then still carry a date; it means nothing now.
+   */
   expires_at: string | null;
   /** Ordered segment paths and durations (migration 0006). */
   segment_paths: string[] | null;
@@ -423,10 +419,6 @@ export async function uploadRecording({
       .upload(path, blob, { contentType: mimeType, upsert: true });
 
     if (!error) {
-      const expiresAt = new Date(
-        Date.now() + RETENTION_DAYS * 24 * 60 * 60 * 1000
-      ).toISOString();
-
       const { data, error: rowErr } = await supabase
         .from('intent_sessions')
         .update({
@@ -435,7 +427,6 @@ export async function uploadRecording({
           duration_seconds: durationSeconds,
           status: 'uploaded',
           error: null,
-          expires_at: expiresAt,
         })
         .eq('id', sessionId)
         .select('*')
@@ -521,7 +512,6 @@ export async function uploadRecordingSegments({
     onProgress?.(i + 1, segments.length);
   }
 
-  const expiresAt = new Date(Date.now() + RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const totalDuration = segments.reduce((s, x) => s + x.durationSeconds, 0);
 
   const { data, error } = await supabase
@@ -533,7 +523,6 @@ export async function uploadRecordingSegments({
       duration_seconds: totalDuration,
       status: 'uploaded',
       error: null,
-      expires_at: expiresAt,
     })
     .eq('id', sessionId)
     .select('*')

@@ -659,8 +659,8 @@ wrong summary is deleting the whole session.
 The data already sits in one row per session plus one field on the profile. This
 is a screen, not an architecture.
 
-**7. A retention period for transcripts.** See §12 — it folds into D-4, which is
-already open.
+**7. A retention period for transcripts.** See §12. D-4 is closed and the answer
+was no automatic retention, so this would be a new decision rather than an open one.
 
 ### Order I would ship it
 
@@ -752,9 +752,11 @@ understanding field.
 
 ## 12. Retention is part of the memory architecture
 
-Currently: `RETENTION_DAYS` is 30 and applies to **audio recordings only**
-(`app/api/cron/purge-recordings/route.ts`, N-5). `chat_messages` has no
-retention at all. Full verbatim therapy transcripts persist indefinitely.
+Currently: **nothing expires anywhere.** Automatic retention was removed on
+15 August 2026 — the scheduled purge and `RETENTION_DAYS` are gone, on the
+grounds that consent is taken from the uploader for both parties and users can
+delete their own data (N-2). Audio recordings, `chat_messages` and full
+verbatim therapy transcripts all persist until someone deletes them by hand.
 
 That is an unbounded liability in a jurisdiction the requirements doc already
 flags, on a product whose privacy policy has no author yet (D-3).
@@ -762,9 +764,10 @@ flags, on a product whose privacy policy has no author yet (D-3).
 It is also a memory-architecture decision, not just a policy one. The design
 I would propose:
 
-- **Transcripts expire** on the D-4 period. They exist to be summarised, to let
-  a user re-read a recent session, and for crisis auditing — all short-horizon
-  uses.
+- **Transcripts expire** on some period, which would now have to be chosen
+  rather than inherited — D-4 closed on no automatic retention. They exist to be
+  summarised, to let a user re-read a recent session, and for crisis auditing —
+  all short-horizon uses.
 - **Summaries, quotes, open threads and the understanding persist.** They are
   small, they are what continuity actually runs on, and they are the things the
   user can see and correct under item 6.
@@ -779,7 +782,8 @@ The upside is a sentence the client can put on a landing page and mean: *Elena
 keeps a page of notes about you, not a recording of everything you have ever
 said.* That is both more defensible and more comfortable than the truth today.
 
-Folds into D-4, which is already open and already blocking the retention job.
+D-4 is closed: there is no automatic retention, so nothing expires on its own
+and this would be the first thing in the product that did.
 
 ---
 
