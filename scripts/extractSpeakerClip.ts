@@ -129,8 +129,25 @@ async function main() {
   // Merge consecutive turns first. A ten-second clip has to be ten seconds of
   // ONE person talking without interruption, and raw segments split on pauses —
   // so the longest raw segment is usually a fragment of a much longer turn.
-  const turns = groupBySpeaker(result.segments);
-  const labels = [...new Set(turns.map((t) => t.speaker))].filter((l) => l !== ENROLLED_LABEL);
+  //
+  // transcribeChunk returns segments without isEnrolled — that flag is added
+  // later by transcribeChunks, once it knows which label the reference matched.
+  // Here the reference is silence and matches nobody, so it is filled in
+  // honestly rather than defaulted: anything the API did label as the enrolled
+  // speaker is dropped below, and marking it false would hide that.
+  const turns = groupBySpeaker(
+    result.segments.map((s) => ({ ...s, isEnrolled: s.speaker === ENROLLED_LABEL }))
+  );
+
+  // Every label counts, including 'me'. The reference is silence, so it should
+  // match nobody and 'me' should never appear — but it does, intermittently,
+  // and it is a real speaker when it happens. Filtering it out as "not a real
+  // voice" discarded one of the two people in this window and reported the
+  // recording as a monologue; the previous run of the same file found both.
+  //
+  // With an unanchored reference a label is nothing more than a bucket, so
+  // treat them all the same and let the caller decide who is who.
+  const labels = [...new Set(turns.map((t) => t.speaker))];
   console.log(`${labels.length} voice(s) [${labels.join(', ')}]\n`);
 
   if (labels.length < 2) {
@@ -170,10 +187,18 @@ async function main() {
     console.log(`  "${best.text.trim().slice(0, 160)}${best.text.trim().length > 160 ? '…' : ''}"\n`);
   }
 
+  if (labels.length > 2) {
+    console.log(
+      `${labels.length} labels for what is probably two people — this window over-split.\n` +
+        'Compare the lines above: two labels that read like the same person are the\n' +
+        'same person. Take the longest clip of each real voice and ignore the rest.\n'
+    );
+  }
+
   console.log(
-    'Listen to both, pick the one you want to be "me", and upload it as your\n' +
-      'voice sample in Settings. The full recording then becomes a two-party\n' +
-      'conversation with a known enrolled speaker.'
+    'Pick the one you want to be "me" and upload it as your voice sample in\n' +
+      'Settings. The full recording then becomes a two-party conversation with a\n' +
+      'known enrolled speaker.'
   );
 }
 
