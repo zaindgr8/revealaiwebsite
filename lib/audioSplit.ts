@@ -34,8 +34,34 @@ import {
  * which is typically from a desk on wifi.
  */
 
-/** Matches CHUNK_SECONDS in lib/transcription.ts. */
-export const SPLIT_SECONDS = 300;
+/**
+ * Chunk length for uploads. Imported, not copied.
+ *
+ * This was a hardcoded 300 with a comment claiming it matched CHUNK_SECONDS.
+ * It did when it was written. CHUNK_SECONDS then moved to 180 to pass N-4, and
+ * this did not, so from that point every upload was split at 300s while every
+ * measurement script split at 180s — the scripts were measuring a chunk length
+ * no upload ever used, and reporting it as the product's behaviour.
+ *
+ * Measured 15 August 2026 on the six-minute recording that failed, same audio
+ * and same enrolment reference, chunk length the only variable:
+ *
+ *   180s chunks ->  7% stray, 60% attributed to the user, 62s   accepted
+ *   300s chunks -> 25% stray, 21% attributed to the user, 108s  rejected
+ *
+ * The user saw 27% and a refusal to analyse. There was nothing wrong with
+ * their recording.
+ *
+ * Longer windows give diarization more room to drift: the same voice heard
+ * five minutes apart under a shifting noise floor stops looking like one
+ * person, and the invented labels are what stray share counts. The 108s also
+ * shows the second cost — fewer, longer chunks parallelise worse, so the N-4
+ * fix was not reaching uploads either.
+ *
+ * Bound to the source of truth so it cannot drift a second time.
+ */
+export { CHUNK_SECONDS as SPLIT_SECONDS } from './transcription';
+import { CHUNK_SECONDS as SPLIT_SECONDS } from './transcription';
 
 /**
  * Upper bound on input length.

@@ -194,7 +194,10 @@ type SessionRow = {
  * claim about 20-minute recordings and the app has only ever stored short
  * ones, so without this the requirement cannot be tested at all.
  */
-function splitLocal(path: string): { chunks: { data: ArrayBuffer; offsetSeconds: number }[]; seconds: number } {
+function splitLocal(
+  path: string,
+  chunkSeconds = CHUNK_SECONDS
+): { chunks: { data: ArrayBuffer; offsetSeconds: number }[]; seconds: number } {
   const probe = execFileSync(
     'ffprobe',
     ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', path],
@@ -209,7 +212,7 @@ function splitLocal(path: string): { chunks: { data: ArrayBuffer; offsetSeconds:
       // The probe slices WAV by byte offset and skips anything else, so an mp3
       // here would silently measure the pre-probe pipeline.
       '-ar', '16000', '-ac', '1',
-      '-f', 'segment', '-segment_time', String(CHUNK_SECONDS),
+      '-f', 'segment', '-segment_time', String(chunkSeconds),
       join(dir, 'part-%03d.wav'),
     ]);
     const parts = readdirSync(dir).filter((f) => f.startsWith('part-')).sort();
@@ -217,7 +220,7 @@ function splitLocal(path: string): { chunks: { data: ArrayBuffer; offsetSeconds:
       const buf = readFileSync(join(dir, f));
       return {
         data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer,
-        offsetSeconds: i * CHUNK_SECONDS,
+        offsetSeconds: i * chunkSeconds,
       };
     });
     return { chunks, seconds };
@@ -231,6 +234,19 @@ async function main() {
   const fileFlag = process.argv.indexOf('--file');
   const localFile = fileFlag !== -1 ? process.argv[fileFlag + 1] : undefined;
   const wanted = fileFlag === -1 ? process.argv[3] : undefined;
+
+  // --chunk exists because these two numbers drifted apart once already and it
+  // cost a day. The browser splits uploads at audioSplit.ts's SPLIT_SECONDS
+  // while every script here split at CHUNK_SECONDS, so the scripts were
+  // measuring a chunk length no upload ever used. They are bound together now,
+  // but being able to vary it is how that was found, and how the effect of
+  // changing it can be measured before shipping the change.
+  const chunkFlag = process.argv.indexOf('--chunk');
+  const chunkSeconds = chunkFlag !== -1 ? Number(process.argv[chunkFlag + 1]) : CHUNK_SECONDS;
+  if (!Number.isFinite(chunkSeconds) || chunkSeconds <= 0) {
+    console.error('--chunk needs a positive number of seconds.');
+    process.exit(1);
+  }
 
   const sessions = await rest<SessionRow[]>(
     'intent_sessions?select=id,user_id,mime_type,duration_seconds,segment_paths,segment_durations,storage_path' +
@@ -262,11 +278,12 @@ async function main() {
   let mimeType: string;
 
   if (localFile) {
-    const split = splitLocal(localFile);
+    const split = splitLocal(localFile, chunkSeconds);
     chunks = split.chunks;
     audioSeconds = split.seconds;
     mimeType = 'audio/wav';
     console.log(`file      ${localFile}`);
+    console.log(`chunk     ${chunkSeconds}s`);
   } else {
     const paths = s.segment_paths ?? (s.storage_path ? [s.storage_path] : []);
     const durations = s.segment_durations ?? [s.duration_seconds ?? 0];
