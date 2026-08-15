@@ -135,7 +135,17 @@ already selling. It may well be the right call — but it should be understood a
 pushing back on a stated requirement, not clarifying an ambiguous one, and
 pushback should be expected.
 
-**Status: unanswered.** Blocks the analysis output layer.
+**Status: answered 14 August 2026 — observations.** The client changed position
+when shown that the same recording, run five times unchanged, came back
+differently each time: *"we will need analysis there not percentage."*
+
+He also added a shape the PRD had not asked for — findings pinned to specific
+moments, *"it needs to tell that at 'this' point the other person was trying to
+manipulate"* — which is what I-5 was built to on 15 August.
+
+The site still advertises "Genuine Interest 92%". That is now a discrepancy
+between the product and the marketing rather than an open question, and it
+belongs to §5.
 
 ---
 
@@ -151,8 +161,10 @@ money against them today.
 | **Team tier, $39/mo** — team health dashboard, manager insights, API access | Out of scope. Also the pattern the EU prohibition on workplace emotion recognition targets. |
 | **Free tier** — $0 forever, 5 check-ins/month, "mobile app access" | No free tier exists in the product; billing is a paid subscription. Mobile is out of scope. |
 
-The site also presents the Intent Detector with percentage scores, which is
-§4.2 already decided in one direction.
+The site also presents the Intent Detector with percentage scores. As of
+14 August the client has decided against those, so the site now advertises an
+output format the product deliberately does not produce. Someone should change
+the copy before launch.
 
 **This needs an explicit answer: is the PRD the source of truth, or the site?**
 If the PRD, the site copy needs correcting. If the site, scope and timeline
@@ -164,7 +176,7 @@ both change.
 
 | | Status | Blocks |
 |---|---|---|
-| D-1 — percentages or observations | percentages | Analysis output layer |
+| D-1 — percentages or observations | **answered 14 Aug: observations, pinned to moments.** Built. | — |
 | D-2 — second-party consent reviewed by a lawyer | no need for the other person review as the user is uploading the conversation , this person is the one who is responsible for the consent | Consent wording |
 | D-3 — who writes privacy policy and terms | they will , we dont need to add it ourself | Consent copy, launch |
 | D-4 — retention period | Assumed 90 days | Retention job |

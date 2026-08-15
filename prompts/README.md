@@ -26,6 +26,7 @@ test scripts. Editing them is still just editing text.
 | `summarise.ts` | `/api/summarise-session` | T-4 |
 | `checkIn.ts` | `/api/analyze-mood` | the daily voice check-in |
 | `deepQuestion.ts` | `/api/deep-question` | the follow-up question |
+| `intent.ts` | `/api/intent/analyse`, `scripts/testIntentAnalysis.ts` | I-5 |
 
 ## Two rules
 
@@ -47,8 +48,10 @@ bad one.
 ## Testing a change
 
 ```
-npm run demo:memory      # T-2 / T-3, with and without memory
-npm run test:crisis      # T-8, all 35 phrases
+npm run demo:memory            # T-2 / T-3, with and without memory
+npm run test:crisis            # T-8, all 35 phrases
+npm run test:intent            # I-5 guards, offline
+npm run test:intent -- --live  # plus one real analysis you can read
 ```
 
 Run them **several times**. These failures are intermittent, and a single
@@ -58,6 +61,14 @@ failing twice more.
 Editing `crisis.ts` is a safety change. It decides whether someone at risk
 gets a support screen or a conversational reply, so `npm run test:crisis`
 is not optional before shipping one.
+
+Editing `intent.ts` is the other one. It is the only prompt here that writes
+about somebody who is not the user and never agreed to be written about, so
+run `npm run test:intent -- --live` and actually read the output. The guards in
+`lib/intentAnalysis.ts` will catch a quote that was never said; nothing catches
+a prompt that has quietly started finding manipulation in every conversation
+it is given. The fixture is mixed on purpose — if a run comes back with no
+positive signals in it, that is the signal.
 
 ## No output ceilings
 

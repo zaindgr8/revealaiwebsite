@@ -342,7 +342,7 @@ knows is not attentive, it is invasive.
 
 | | |
 |---|---|
-| **D-1** percentages or observations | **Answer needed today.** See below. |
+| ~~**D-1** percentages or observations~~ | **Answered 14 August: observations.** I-5 built on the 15th. See below. |
 | **D-7** crisis helpline numbers | Still empty. Blocker for Demo 3 on the 13th. |
 | No relevance filter | The limitation shown in §1e. Prompt-level, not enforced. |
 | **T-5** 2-second load at 100 sessions | Still not measured with real volume. |
@@ -358,6 +358,13 @@ stop.
 
 Raise it on this call even though it belongs to a different feature. It is the
 last call before the freeze.
+
+**Resolved 14 August.** Raising it here did not land it; what landed it was the
+stability measurement, sent on the 13th — the same recording run five times,
+coming back with a different speaker count and anywhere from 99 to 273 seconds
+each time. The client answered within a day: *"we will need analysis there not
+percentage."* Two days lost against the freeze, and the lesson is that the
+argument only worked once it had a number behind it.
 
 ### Reply truncation — found and fixed on the morning of the demo
 

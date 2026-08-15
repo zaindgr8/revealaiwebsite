@@ -1,5 +1,40 @@
 # D-1 — percentages or observations
 
+## ANSWERED — 14 August 2026
+
+> **Kanwar:** exactly isko theek krna hai. best hoga yeh. we will need analysis
+> there not percentage.
+>
+> **Kanwar:** it needs to tell that at "this" point the other person was trying
+> to manipulate, he was maybe faking this thing.
+
+**Observations.** No percentages, no scores, no ratings — anywhere in the
+schema or on the screen.
+
+The second message asked for more than the question offered, and it is the
+more useful half of the answer. The PRD's I-5 said only that the system reads
+the other speaker's tone and word choice against a rubric. The client asked for
+that reading to be **pinned to specific moments** — "at *this* point" — rather
+than written as a general character sketch.
+
+So each finding carries a timestamp, a verbatim quote of the words that
+prompted it, what was observed, and a hedged reading of what it might mean.
+Built 15 August: `prompts/intent.ts`, `lib/intentAnalysis.ts`,
+`app/api/intent/analyse/route.ts`. Nothing below this line needs sending.
+
+One thing worth saying back to him, because he has not been told it and it is
+his product: the feature now describes a named, real person who never agreed to
+be described. The wording hedges for that reason, and every claim quotes the
+words it came from so the user can check it. **D-2 and D-3 are still open, and
+the consent copy is still placeholder.** That gap matters more now than it did
+before this was built.
+
+---
+
+*The request below was sent on 13 August. Kept for the record.*
+
+---
+
 Send today. Scope froze 12 August, and this is the one open question that stops
 work rather than slowing it.
 
