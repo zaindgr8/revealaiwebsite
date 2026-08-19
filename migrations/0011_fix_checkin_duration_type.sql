@@ -1,33 +1,44 @@
 -- 0011_fix_checkin_duration_type.sql
 --
 -- The same drift as 0010, on the other table, found by 0010's audit query.
+-- `therapy_sessions.duration_seconds` was `smallint`, which stores whole
+-- numbers only. A fractional duration would not be rounded or truncated — the
+-- INSERT is rejected outright with `invalid input syntax for type smallint`,
+-- and Postgres refuses the whole row over the one bad column. That is how the
+-- conversation upload was failing before 0010, and how check-ins used to vanish
+-- with the analysis apparently succeeding.
 --
--- `therapy_sessions.duration_seconds` is `smallint`, and the check-in write
--- path sends a float:
+-- IS IT REACHABLE TODAY? NO — AND THE ORIGINAL VERSION OF THIS COMMENT SAID
+-- OTHERWISE
 --
---   lib/audioTrim.ts:191   resampled.length / OUTPUT_SAMPLE_RATE
---   lib/ai.ts:278          duration_seconds: durationSeconds
---   app/api/analyze-mood/route.ts:383   duration_seconds: duration_seconds ?? 0
+-- This file used to claim that stopping a check-in early produced a fractional
+-- duration and a failed insert. That does not reproduce. The actual path:
 --
--- WHY THIS HAS NEVER FIRED
+--   hooks/useAudioRecorder.ts:182   secondsRef.current = next   (1s setInterval)
+--   hooks/useAudioRecorder.ts:151   durationSeconds: secondsRef.current
+--   app/therapy/page.tsx:375        durationSeconds: audio.durationSeconds
+--   lib/ai.ts:278                   duration_seconds: durationSeconds
+--   app/api/analyze-mood/route.ts   duration_seconds: duration_seconds ?? 0
 --
--- The recorder stops itself at 60 seconds (app/therapy/page.tsx:500). A
--- check-in that runs to that cap produces exactly 60.0, which is a whole
--- number, which fits in a smallint. Every check-in written by the current
--- codebase — there is exactly one, on 6 August, the "first save since June"
--- from Demo 1 — ran the full minute.
+-- The recorder counts whole seconds off a one-second tick, so stopping at 43
+-- seconds yields exactly 43. Every value reaching this column is an integer.
 --
--- Tap stop at 43 seconds and the duration is fractional, and the insert fails
--- with `invalid input syntax for type smallint`, exactly as the conversation
--- upload did before 0010. The nine older rows all have whole-number durations
--- because they were written by the previous developer's build, which sourced
--- the value differently.
+-- The old comment also cited lib/audioTrim.ts:191 as part of this chain. It is
+-- not — that figure feeds voice enrolment and conversation splitting, which
+-- write to voice_enrollments and intent_sessions, not here.
 --
--- So T-1 — "chat and check-in data saves" — is only verified for one specific
--- user behaviour: recording until the timer runs out. The moment someone stops
--- early, they are back to a silent-looking failure. That is the same class of
--- bug Demo 1 was called for, still live on the same requirement, hidden behind
--- a default that happens to be an integer.
+-- WHY APPLY IT ANYWAY
+--
+-- Because the type is wrong for what the column stores, and the only thing
+-- standing between that and a silent data-loss bug is an implementation detail
+-- nobody is protecting. A duration is not a whole number; it is a whole number
+-- here by accident of how the timer happens to work. Change the tick to 100ms,
+-- take the duration from the decoded audio instead of the counter, or add an
+-- upload path for check-ins, and the column starts rejecting rows again — on
+-- T-1, the requirement this project has already been burned on twice, with no
+-- error visible to the user.
+--
+-- Cheap insurance, not an outage. Applied 19 August 2026.
 --
 -- NOT CHANGED: therapy_sessions.confidence
 --
