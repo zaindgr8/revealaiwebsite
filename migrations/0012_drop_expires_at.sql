@@ -1,0 +1,47 @@
+-- 0012_drop_expires_at.sql
+--
+-- Removes the retention column. DESTRUCTIVE — see the note below before running.
+--
+-- WHY
+--
+-- Automatic retention was removed on 15 August 2026. Consent is taken from the
+-- uploading user on behalf of both parties, and users can already delete their
+-- own recordings and sessions from inside the product (N-2), so the scheduled
+-- purge is not wanted. The nightly job, its schedule and RETENTION_DAYS went
+-- with it; this is the last piece.
+--
+-- WHAT IS LOST
+--
+-- expires_at held "delete the audio after this instant". Nothing has read it
+-- since the purge route was deleted and nothing writes it any more, so the
+-- values are already inert — but they are real dates on real rows and they do
+-- not come back. If retention is ever reintroduced, new expiry dates would be
+-- computed from created_at rather than recovered from here, so nothing depends
+-- on keeping them.
+--
+-- The audio itself is untouched. This drops a date, not a recording.
+--
+-- THE INDEX GOES TOO
+--
+-- 0004 created intent_sessions_expires_idx, a partial index on this column for
+-- the retention sweep to scan by. Postgres drops an index when its only column
+-- is dropped, so no separate statement is needed — but it is named here so that
+-- anyone diffing the schema against 0004 knows where it went rather than
+-- assuming something was missed.
+--
+-- IF RETENTION COMES BACK
+--
+-- Restore with:
+--
+--   alter table public.intent_sessions
+--     add column if not exists expires_at timestamptz;
+--
+--   create index if not exists intent_sessions_expires_idx
+--     on public.intent_sessions (expires_at)
+--     where expires_at is not null;
+--
+-- and reinstate app/api/cron/purge-recordings/route.ts plus its vercel.json
+-- schedule from git history — commit 263a804 is where they were removed.
+
+alter table public.intent_sessions
+  drop column if exists expires_at;

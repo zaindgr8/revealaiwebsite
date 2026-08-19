@@ -20,10 +20,10 @@ const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
   { href: '/therapy', label: 'Reflect', icon: 'pulse' },
   { href: '/chat', label: 'AI Chat', icon: 'chat' },
-  // Feature 2. Reachable but INCOMPLETE: processing stops at 'analysing' with a
-  // speaker-labelled transcript and no result, because I-5 is blocked on D-1
-  // (see app/api/intent/process/route.ts). Fine for testing and for Demo 4.
-  // Reconsider before this reaches real users — a nav entry is a promise that
+  // Feature 2, complete end to end since 15 August: consent, record or upload,
+  // speaker-labelled transcript, and the I-5 analysis in /api/intent/analyse.
+  // It was reachable here for two demos before it could finish, which was a
+  // deliberate call and an uncomfortable one — a nav entry is a promise that
   // the thing behind it finishes.
   { href: '/intent', label: 'Intent', icon: 'users' },
   { href: '/trends', label: 'Journey', icon: 'trending-up' },

@@ -12,6 +12,7 @@ import { useAuth } from '@/lib/auth-context';
 import { signOut } from '@/lib/auth';
 import { deleteAccount, updateProfileName, uploadAvatar, cancelSubscription } from '@/lib/profile';
 import { getAllSessionsForExport } from '@/lib/ai';
+import { VoiceEnrollment } from '@/components/VoiceEnrollment';
 
 function SettingsInner() {
   const router = useRouter();
@@ -500,13 +501,44 @@ function SettingsInner() {
         })()}
       </Card>
 
+      {/*
+        Re-recording the voice sample.
+
+        Not I-2 — that is the scenario picker. This is the first item on PRD
+        section 8's cut list: "Re-recording your voice sample from settings.
+        Enrol once, support handles resets." So it is scope that was traded away
+        for the three-week date and then put back.
+
+        Cheap to put back, because VoiceEnrollment already exists for I-1 and
+        this is only a second mount point. Worth flagging anyway: work the
+        client agreed to lose should reappear visibly, not silently.
+      */}
+      <Card style={{ marginTop: 14 }}>
+        <SectionTitle>Your Voice</SectionTitle>
+        <div style={{ padding: '0 2px' }}>
+          <VoiceEnrollment />
+        </div>
+        <p
+          style={{
+            fontSize: 11,
+            color: COLORS.textMuted,
+            lineHeight: 1.6,
+            marginTop: 12,
+          }}
+        >
+          Your voice sample is stored privately and is only used to tell which
+          speaker is you in a recorded conversation. It is not used to verify
+          your identity or to sign you in.
+        </p>
+      </Card>
+
       <Card style={{ marginTop: 14 }}>
         <SectionTitle>Privacy & Data</SectionTitle>
 
         <Row
           icon="phone"
           label="Audio Storage"
-          sub="Recordings are deleted after analysis"
+          sub="Check-in recordings are deleted after analysis"
           border
         >
           <span
