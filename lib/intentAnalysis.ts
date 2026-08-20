@@ -34,14 +34,15 @@
  */
 
 import type { Segment } from '@/lib/transcription';
+import { GEMINI_TEXT_MODEL, geminiGenerateContentUrl } from '@/lib/geminiModel';
 import type { IntentScenario } from '@/lib/audioStorage';
 import { INTENT_SIGNALS, intentAnalysisPrompt, type IntentSignal } from '@/prompts/intent';
 
 export { INTENT_SIGNALS, type IntentSignal };
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-const MODEL = 'gemini-2.5-flash';
+  geminiGenerateContentUrl();
+const MODEL = GEMINI_TEXT_MODEL;
 
 /** Bumped if the stored shape changes, so old rows stay readable. */
 export const ANALYSIS_VERSION = 1;
@@ -290,7 +291,9 @@ export async function analyseConversation({
       // that the pipeline disagrees with itself between runs; answering that
       // with a high-variance analysis layer would be an odd way to keep the
       // promise. No maxOutputTokens — see prompts/README.md.
-      generationConfig: { temperature: 0.2, responseMimeType: 'application/json' },
+      // temperature was 0.2 here. Gemini 3.x ignores it, so the low variance
+      // the note above asks for now rests on the prompt and the schema alone.
+      generationConfig: { responseMimeType: 'application/json' },
     }),
   });
 

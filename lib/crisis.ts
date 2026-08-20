@@ -20,6 +20,7 @@
  */
 
 import { CLASSIFIER_PROMPT } from '@/prompts/crisis';
+import { geminiGenerateContentUrl } from '@/lib/geminiModel';
 
 export type CrisisLevel = 'none' | 'concern' | 'crisis';
 
@@ -132,6 +133,12 @@ const EXPLICIT_PATTERNS: RegExp[] = [
   new RegExp(String.raw`\bi\s+${FILLER}don'?t\s+want\s+to\s+(be\s+here|live|wake\s+up)\s+(any\s?more|anymore)\b`, 'i'),
   new RegExp(String.raw`\bi\s+${FILLER}(want|plan)\s+to\s+hurt\s+myself\b`, 'i'),
   /\b(kill\s+myself|end\s+my\s+life|take\s+my\s+own\s+life)\b/i,
+  // Method-seeking can be phrased without the words "suicide" or "myself".
+  // This exact class was missed when the classifier timed out: "What is the
+  // least painful way to go?" It is unambiguous enough for the deterministic
+  // net and must never depend on a network round trip.
+  /\b(?:what(?:'s|\s+is)|which)\s+(?:the\s+)?(?:least\s+painful|most\s+painless|quickest|easiest)\s+way\s+to\s+(?:die|go|end\s+it)\b/i,
+  /\bhow\s+(?:can|could|do|should|would)\s+i\s+(?:die|kill\s+myself|end\s+(?:it|my\s+life))\b/i,
 ];
 
 export function deterministicCrisisCheck(text: string): CrisisVerdict {
@@ -157,13 +164,13 @@ export function deterministicCrisisCheck(text: string): CrisisVerdict {
 // ─────────────────────────────────────────────────────────────
 
 const CLASSIFIER_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  geminiGenerateContentUrl();
 
 
 export async function classifyCrisis(
   text: string,
   apiKey: string,
-  timeoutMs = 4000
+  timeoutMs = 8000
 ): Promise<CrisisVerdict> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -176,8 +183,12 @@ export async function classifyCrisis(
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${CLASSIFIER_PROMPT}\n\nMessage:\n${text}` }] }],
         generationConfig: {
-          temperature: 0,
-
+          // temperature was 0 here, to make a safety classifier repeat itself
+          // exactly. Gemini 3.x ignores temperature, so that guarantee is
+          // gone and no parameter replaces it. The response schema below is
+          // the only thing bounding the output now. Re-run
+          // `npm run test:crisis` before trusting this on the new model.
+          //
           // NO maxOutputTokens. There was a 100-token cap here and it broke the
           // classifier completely: the model preambles ("Here is the JSON…")
           // before emitting anything, hit the ceiling mid-preamble, and
@@ -205,7 +216,12 @@ export async function classifyCrisis(
           // This runs before every single reply, so it sits directly in the
           // latency budget of the conversation. Measured identical accuracy
           // across the whole test set with thinking disabled.
-          thinkingConfig: { thinkingBudget: 0 },
+          //
+          // thinkingBudget: 0 no longer exists — Gemini 3.x replaced the
+          // budget with a level, and there is no 'off'. 'low' is the floor.
+          // That means this call now thinks a little where it used to think
+          // not at all, so re-measure both the latency and the test set.
+          thinkingConfig: { thinkingLevel: 'low' },
         },
       }),
     });

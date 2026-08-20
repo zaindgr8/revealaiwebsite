@@ -37,8 +37,7 @@ import {
   type StreakData,
   type UserContext,
 } from '@/lib/ai';
-import { speakDespina, stopDespina } from '@/lib/despinaVoice';
-import LiveVoiceChat from '@/components/LiveVoiceChat';
+import { speakElena, stopElena } from '@/lib/elenaVoice';
 import { deductSessionMinutes } from '@/lib/subscription';
 
 const PACE_LABEL: Record<string, string> = { Slow: 'Slow', Normal: 'Normal', Fast: 'Fast' };
@@ -162,7 +161,7 @@ function TherapyInner() {
   // Clean up speech synthesis on unmount
   useEffect(() => {
     return () => {
-      stopDespina();
+      stopElena();
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch {}
       }
@@ -171,11 +170,11 @@ function TherapyInner() {
 
   const playMessageVoice = (id: string, text: string) => {
     if (isSpeakingId === id) {
-      stopDespina();
+      stopElena();
       setIsSpeakingId(null);
     } else {
       setIsSpeakingId(id);
-      speakDespina(text, () => setIsSpeakingId(null));
+      speakElena(text, () => setIsSpeakingId(null));
     }
   };
 
@@ -195,7 +194,7 @@ function TherapyInner() {
     setConversationMessages(updatedMessages);
     setChatInputText('');
     setIsTherapistThinking(true);
-    stopDespina();
+    stopElena();
     setIsSpeakingId(null);
 
     const sessionId = coachSessionIdRef.current;
@@ -314,7 +313,7 @@ function TherapyInner() {
   const handleFinishDeepConversation = async (explicitMessages?: ConversationMessage[]) => {
     if (!savedAudio || isSubmittingDeep) return;
     setIsSubmittingDeep(true);
-    stopDespina();
+    stopElena();
     setIsSpeakingId(null);
 
     const msgsToUse = explicitMessages || conversationMessages;
@@ -534,7 +533,7 @@ function TherapyInner() {
 
   // Reset to record — revoke blob and clear persisted session
   const handleNewRecording = () => {
-    stopDespina();
+    stopElena();
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
       blobUrlRef.current = null;

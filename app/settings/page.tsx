@@ -13,6 +13,7 @@ import { signOut } from '@/lib/auth';
 import { deleteAccount, updateProfileName, uploadAvatar, cancelSubscription } from '@/lib/profile';
 import { getAllSessionsForExport } from '@/lib/ai';
 import { VoiceEnrollment } from '@/components/VoiceEnrollment';
+import { TherapistVoicePicker } from '@/components/TherapistVoicePicker';
 
 function SettingsInner() {
   const router = useRouter();
@@ -80,7 +81,7 @@ function SettingsInner() {
     try {
       const url = await uploadAvatar(user.id, file);
       setProfile((prev) =>
-        prev ? { ...prev, avatar_url: url } : { full_name: displayName, avatar_url: url, trial_ends_at: null, subscription_status: null, subscription_minutes_remaining: null, total_minutes_used: null, pending_payment_intent_id: null }
+        prev ? { ...prev, avatar_url: url } : { full_name: displayName, avatar_url: url, trial_ends_at: null, subscription_status: null, subscription_minutes_remaining: null, total_minutes_used: null, pending_payment_intent_id: null, therapist_voice: null }
       );
     } catch (err) {
       alert((err as Error).message);
@@ -98,7 +99,7 @@ function SettingsInner() {
       setProfile((prev) =>
         prev
           ? { ...prev, full_name: nameInput.trim() }
-          : { full_name: nameInput.trim(), avatar_url: null, trial_ends_at: null, subscription_status: null, subscription_minutes_remaining: null, total_minutes_used: null, pending_payment_intent_id: null }
+          : { full_name: nameInput.trim(), avatar_url: null, trial_ends_at: null, subscription_status: null, subscription_minutes_remaining: null, total_minutes_used: null, pending_payment_intent_id: null, therapist_voice: null }
       );
       setEditingName(false);
     } catch (err) {
@@ -529,6 +530,31 @@ function SettingsInner() {
           Your voice sample is stored privately and is only used to tell which
           speaker is you in a recorded conversation. It is not used to verify
           your identity or to sign you in.
+        </p>
+      </Card>
+
+      {/*
+        Which voice Elena speaks with on a live call.
+
+        Sits next to "Your Voice" on purpose, and is deliberately titled so the
+        two cannot be confused: that card is the user's own voice sample, used
+        to tell speakers apart in a recording. This one is the therapist's
+        voice. Same word, opposite meaning.
+      */}
+      <Card style={{ marginTop: 14 }}>
+        <SectionTitle>Elena&apos;s Voice</SectionTitle>
+        <TherapistVoicePicker />
+        <p
+          style={{
+            fontSize: 11,
+            color: COLORS.textMuted,
+            lineHeight: 1.6,
+            marginTop: 12,
+          }}
+        >
+          Choose how Elena sounds on a live call. Only the voice changes — she is
+          the same Elena whichever one you pick. A saved change applies to your
+          next call, not to one already running.
         </p>
       </Card>
 

@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
     // 1. ElevenLabs (if ELEVENLABS_API_KEY is configured)
     if (elevenLabsKey) {
-      // Voice ID for Despina / Rachel / Bella (warm female voice)
+      // ElevenLabs voice id for Elena (warm female voice).
       const voiceId = process.env.ELEVENLABS_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
       const elRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
         method: 'POST',

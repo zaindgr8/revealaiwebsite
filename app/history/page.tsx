@@ -28,6 +28,7 @@ import { fmtChartLabels, fmtFullDate, fmtTime } from '@/lib/format';
 const KIND_LABEL: Record<HistoryItem['kind'], string> = {
   checkin: 'Voice check-in',
   chat: 'Chat',
+  live: 'Live call',
   intent: 'Recorded conversation',
 };
 

@@ -94,7 +94,7 @@ export type ChatMessage = { role: 'user' | 'assistant'; content: string };
  *             appears on the therapy_sessions row it fed into, and listing
  *             both would show one check-in as two entries.
  */
-export type CoachSessionSource = 'chat' | 'checkin';
+export type CoachSessionSource = 'chat' | 'checkin' | 'live';
 
 export type CoachSession = {
   id: string;
@@ -452,13 +452,17 @@ export async function endCoachSession(sessionId: string): Promise<void> {
  * the user getting into a new conversation.
  */
 async function sweepAbandonedSessions(cutoffIso: string): Promise<void> {
-  // Only standalone chats. An abandoned check-in conversation is closed by the
-  // check-in flow itself, and summarising one would spend a model call on
-  // content that already went into the check-in analysis.
+  // Standalone conversations only. An abandoned check-in conversation is
+  // closed by the check-in flow itself, and summarising one would spend a
+  // model call on content that already went into the check-in analysis.
+  //
+  // Live calls are swept too. A call whose tab was closed mid-conversation
+  // never reaches endConversation, so without this it stays open forever:
+  // never summarised, therefore never remembered, and a blank row in history.
   const { data, error } = await supabase
     .from('coach_sessions')
     .select('id')
-    .eq('source', 'chat')
+    .in('source', ['chat', 'live'])
     .is('ended_at', null)
     .lt('created_at', cutoffIso)
     .limit(5);
@@ -547,7 +551,7 @@ export type HistoryItem = {
    * score, so they never reach the mood chart — which is correct, because a
    * conversation with someone else is not a reading of how the user feels.
    */
-  kind: 'checkin' | 'chat' | 'intent';
+  kind: 'checkin' | 'chat' | 'live' | 'intent';
   created_at: string;
   mood_score: number | null;
   /** detected_mode for a check-in, or a topic for a conversation. */
@@ -585,10 +589,13 @@ export async function getHistoryFeed({
   // Only standalone conversations. A check-in conversation is already
   // represented by its therapy_sessions row — listing both would show one
   // check-in as two separate history entries.
+  //
+  // A live call is standalone in exactly the same way, so it belongs here. It
+  // keeps its own source so the row can say "Live call" rather than "Chat".
   let chats = supabase
     .from('coach_sessions')
-    .select('id, created_at, mood_score, summary, topics, crisis_flagged')
-    .eq('source', 'chat')
+    .select('id, created_at, source, mood_score, summary, topics, crisis_flagged')
+    .in('source', ['chat', 'live'])
     .not('ended_at', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -639,7 +646,7 @@ export async function getHistoryFeed({
     })),
     ...(chatRes.data ?? []).map((r) => ({
       id: r.id as string,
-      kind: 'chat' as const,
+      kind: (r.source === 'live' ? 'live' : 'chat') as 'live' | 'chat',
       created_at: r.created_at as string,
       mood_score: (r.mood_score as number) ?? null,
       // No chip. The other two kinds put something informative here — the mood
@@ -683,6 +690,8 @@ export async function getHistoryFeed({
 
 const HISTORY_TABLES: Record<HistoryItem['kind'], string> = {
   chat: 'coach_sessions',
+  // A live call is a coach_sessions row like a chat. Only the label differs.
+  live: 'coach_sessions',
   checkin: 'therapy_sessions',
   intent: 'intent_sessions',
 };

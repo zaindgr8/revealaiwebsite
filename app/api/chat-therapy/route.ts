@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { geminiGenerateContentUrl } from '@/lib/geminiModel';
 import { createClient } from '@supabase/supabase-js';
 import {
   buildMemoryBlock,
@@ -15,7 +16,7 @@ import { ELENA_PERSONA, FINAL_TURN_INSTRUCTION } from '@/prompts/elena';
 export const maxDuration = 30;
 
 const GEMINI_CHAT_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  geminiGenerateContentUrl();
 
 
 export async function POST(req: NextRequest) {
@@ -180,9 +181,8 @@ export async function POST(req: NextRequest) {
     const geminiBody = {
       contents,
       generationConfig: {
-        temperature: 0.6,
-        topP: 0.9,
-
+        // temperature 0.6 and topP 0.9 were here. Gemini 3.x ignores both.
+        //
         // NO maxOutputTokens. There was a 1024 cap here and it was silently
         // truncating replies.
         //

@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:crisis": "npx tsx scripts/runCrisisTests.ts",
     "test:reflect-live": "npx tsx scripts/testReflectAnalysisLive.ts",
+    "test:live-gemini": "npx tsx scripts/testGeminiLive.ts",
     "test:graphs": "npx tsx scripts/testGraphMetrics.ts",
     "test:graphs-live": "npx tsx scripts/verifyGraphDataLive.ts",
     "test:memory": "npx tsx scripts/runMemoryTests.ts",

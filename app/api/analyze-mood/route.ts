@@ -76,6 +76,19 @@ function normaliseRecommendations(value: unknown): string[] {
     .slice(0, 3);
 }
 
+/**
+ * Reflect is available outside the US, so a model must not silently insert a
+ * US-only crisis number. The escalation UI has the client's verified regional
+ * resources; Reflect prose stays location-neutral when no user region was
+ * supplied to the model.
+ */
+function makeCrisisContactLocationSafe(value: string): string {
+  return value
+    .replace(/\b(?:call|dial|text)\s+(?:the\s+)?988\b/gi, 'contact your local crisis line or emergency services')
+    .replace(/\b988\s+(?:Suicide\s*&\s*Crisis\s+)?Lifeline\b/gi, 'your local crisis line or emergency services')
+    .replace(/\b(?:National\s+Suicide\s+Prevention|Suicide\s*&\s*Crisis)\s+Lifeline\b/gi, 'your local crisis line or emergency services');
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // System prompt — strict voice-first analysis
 // CRITICAL RULES embedded directly so the model cannot ignore them.
@@ -222,8 +235,13 @@ async function callGemini(
       // watching. If the prose becomes noticeably repetitive, split into two
       // calls — scores at 0, narrative at 0.6 — rather than reintroducing
       // variance into numbers users are shown as trends.
-      temperature: 0,
-      topP: 0.85,
+      // The settings the note above describes are gone, and the finding it
+      // records still stands. Gemini 3.x ignores temperature, topP and topK
+      // outright — no error, no warning — so the reproducibility this route
+      // depends on is no longer bought by a number. Re-measure the energy
+      // spread on gemini-3.7-flash. If it has come back, the fix is a
+      // stricter schema and a prompt that pins the scoring rules, not a
+      // parameter the model discards.
       responseMimeType: 'application/json',
     },
   };
@@ -330,11 +348,14 @@ export async function POST(req: NextRequest) {
     const transcriptSummary = String(analysis.transcript_summary || '');
     const recommendations = normaliseRecommendations(
       analysis.recommendations ?? analysis.tips
-    );
-    const todaysAction = analysis.todays_action
+    ).map(makeCrisisContactLocationSafe);
+    const rawTodaysAction = analysis.todays_action
       ? String(analysis.todays_action)
       : analysis.daily_prompt
       ? String(analysis.daily_prompt)
+      : null;
+    const todaysAction = rawTodaysAction
+      ? makeCrisisContactLocationSafe(rawTodaysAction)
       : null;
 
     // New deep-analysis fields

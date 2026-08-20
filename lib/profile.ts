@@ -1,5 +1,6 @@
 'use client';
 import { supabase } from './supabase';
+import { VOICES } from './voices';
 
 export type Profile = {
   full_name: string;
@@ -10,6 +11,9 @@ export type Profile = {
   subscription_minutes_remaining: number | null;
   total_minutes_used: number | null;
   pending_payment_intent_id: string | null;
+  // Google voice id for the live call. NULL until the user picks one — see
+  // migrations/0013 and lib/voices.ts.
+  therapist_voice: string | null;
 };
 
 export async function getProfile(userId: string): Promise<Profile> {
@@ -17,7 +21,7 @@ export async function getProfile(userId: string): Promise<Profile> {
   const { data, error } = await supabase
     .from('profiles')
     .select(
-      'full_name, avatar_url, trial_ends_at, subscription_status, subscription_minutes_remaining, total_minutes_used, pending_payment_intent_id'
+      'full_name, avatar_url, trial_ends_at, subscription_status, subscription_minutes_remaining, total_minutes_used, pending_payment_intent_id, therapist_voice'
     )
     .eq('id', userId)
     .single();
@@ -37,6 +41,7 @@ export async function getProfile(userId: string): Promise<Profile> {
       subscription_minutes_remaining: null,
       total_minutes_used: null,
       pending_payment_intent_id: null,
+      therapist_voice: null,
     };
   }
 
@@ -44,6 +49,22 @@ export async function getProfile(userId: string): Promise<Profile> {
   return data as Profile;
 }
 
+
+/**
+ * Store the user's voice choice. The id is validated against lib/voices.ts
+ * before it is written, so a stale or hand-typed value cannot reach Google and
+ * fail the call with an unexplained socket close.
+ */
+export async function updateTherapistVoice(userId: string, voiceId: string) {
+  if (!VOICES.some((v) => v.id === voiceId)) {
+    throw new Error(`Unknown voice: ${voiceId}`);
+  }
+  const { error } = await supabase
+    .from('profiles')
+    .update({ therapist_voice: voiceId, updated_at: new Date().toISOString() })
+    .eq('id', userId);
+  if (error) throw error;
+}
 
 export async function updateProfileName(userId: string, fullName: string) {
   const trimmed = fullName.trim();

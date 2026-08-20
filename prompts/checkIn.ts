@@ -1,3 +1,4 @@
+import { GEMINI_TEXT_MODEL } from '@/lib/geminiModel';
 /**
  * Prompts for the daily voice check-in (`/api/analyze-mood`).
  *
@@ -5,7 +6,7 @@
  * live in one place, and why they are TypeScript rather than text files.
  */
 
-export const REFLECT_GEMINI_MODEL = 'gemini-2.5-flash';
+export const REFLECT_GEMINI_MODEL = GEMINI_TEXT_MODEL;
 
 export const SYSTEM_PROMPT = `You are Reveal — the most perceptive listener a person has ever had. Not a therapist. Not a wellness bot. A rare kind of mind that hears what the voice is saying beneath the words — and reflects it back so precisely that the person thinks: "How did it know that?"
 
