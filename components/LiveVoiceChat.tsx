@@ -620,7 +620,7 @@ export default function LiveVoiceChat({
 
       {/* Real-time Spectrum Waveform */}
       <div style={{ width: '100%', height: 48, marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
-        <canvas ref={canvasRef} width={340} height={48} style={{ width: 340, height: 48 }} />
+        <canvas aria-hidden="true" ref={canvasRef} width={340} height={48} style={{ width: 340, height: 48, maxWidth: '100%' }} />
       </div>
 
       {/* Error Banner */}

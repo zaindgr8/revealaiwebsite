@@ -18,13 +18,20 @@ export function CircularProgress({
   sublabel,
   color = COLORS.green,
 }: Props) {
+  const safeMax = Number.isFinite(max) && max > 0 ? max : 100;
+  const safeValue = Number.isFinite(value) ? Math.max(0, Math.min(safeMax, value)) : 0;
   const strokeWidth = 8;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const offset = circumference - (value / max) * circumference;
+  const offset = circumference - (safeValue / safeMax) * circumference;
 
   return (
     <div
+      role="progressbar"
+      aria-label={label ?? 'Score'}
+      aria-valuemin={0}
+      aria-valuemax={safeMax}
+      aria-valuenow={safeValue}
       style={{
         width: size,
         height: size,
@@ -65,7 +72,10 @@ export function CircularProgress({
           justifyContent: 'center',
         }}
       >
-        <span style={{ fontSize: size * 0.22, fontWeight: 800, color: COLORS.textPrimary }}>{value}</span>
+        <span style={{ fontSize: size * 0.22, fontWeight: 800, color: COLORS.textPrimary }}>
+          {safeValue}
+        </span>
+        <span style={{ fontSize: 9, color: COLORS.textMuted }}>/ {safeMax}</span>
         {label && <span style={{ fontSize: 11, color: COLORS.textSecondary, marginTop: 2 }}>{label}</span>}
         {sublabel && <span style={{ fontSize: 10, color: COLORS.textMuted }}>{sublabel}</span>}
       </div>

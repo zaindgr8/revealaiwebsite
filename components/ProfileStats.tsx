@@ -4,17 +4,17 @@ import { COLORS } from '@/lib/theme';
 import { Card } from './Card';
 import { Icon } from './Icon';
 import { MiniChart } from './MiniChart';
+import type { TherapySession } from '@/lib/ai';
 import {
   computeProfileAggregates,
   type AggregatePeriod,
   type MetricSummary,
-  type TherapySession,
-} from '@/lib/ai';
+} from '@/lib/graphMetrics';
 
 const PERIODS: { key: AggregatePeriod; label: string }[] = [
   { key: 'daily', label: 'Today' },
-  { key: 'weekly', label: 'Weekly' },
-  { key: 'monthly', label: 'Monthly' },
+  { key: 'weekly', label: '7 Days' },
+  { key: 'monthly', label: '30 Days' },
 ];
 
 export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
@@ -51,9 +51,8 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
             Profile Stats
           </div>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
-            {aggregates.totalSessionsInPeriod} session
-            {aggregates.totalSessionsInPeriod === 1 ? '' : 's'} in this window · compared to your
-            personal baseline
+            Window averages from {aggregates.totalSessionsInPeriod} saved check-in
+            {aggregates.totalSessionsInPeriod === 1 ? '' : 's'}
           </div>
         </div>
 
@@ -72,6 +71,7 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
               <button
                 key={p.key}
                 onClick={() => setPeriod(p.key)}
+                aria-pressed={active}
                 style={{
                   padding: '7px 14px',
                   borderRadius: 9,
@@ -89,31 +89,51 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
         </div>
       </div>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-          gap: 12,
-        }}
-      >
-        {aggregates.metrics.map((m) => (
-          <MetricTile key={m.key} metric={m} />
-        ))}
-      </div>
+      {aggregates.totalSessionsInPeriod === 0 ? (
+        <div
+          role="status"
+          style={{
+            padding: '24px 12px',
+            textAlign: 'center',
+            color: COLORS.textSecondary,
+            fontSize: 13,
+          }}
+        >
+          No saved check-ins in this window. Choose a longer window or complete a new Reflect.
+        </div>
+      ) : (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+            gap: 12,
+          }}
+        >
+          {aggregates.metrics.map((m) => (
+            <MetricTile key={m.key} metric={m} />
+          ))}
+        </div>
+      )}
     </Card>
   );
 }
 
 function MetricTile({ metric }: { metric: MetricSummary }) {
+  const hasBaseline = metric.diff !== null && metric.baseline !== null;
   const isFlat = metric.diff === 0;
-  const isUp = metric.diff > 0;
-  const isGood = isFlat ? null : (isUp && metric.goodWhen === 'up') || (!isUp && metric.goodWhen === 'down');
-  const color = isFlat ? COLORS.textMuted : isGood ? COLORS.success : COLORS.danger;
-  const arrow = isFlat ? '–' : isUp ? '▲' : '▼';
+  const isUp = (metric.diff ?? 0) > 0;
+  const isGood =
+    hasBaseline && !isFlat
+      ? (isUp && metric.goodWhen === 'up') || (!isUp && metric.goodWhen === 'down')
+      : null;
+  const color = !hasBaseline || isFlat ? COLORS.textMuted : isGood ? COLORS.success : COLORS.danger;
+  const arrow = !hasBaseline || isFlat ? '–' : isUp ? '▲' : '▼';
 
-  const directionLabel = isFlat
-    ? `matches your baseline of ${metric.baseline}`
-    : `${Math.abs(metric.diffPct)}% ${isUp ? 'above' : 'below'} your personal average (${metric.baseline})`;
+  const directionLabel = !hasBaseline
+    ? 'Complete 3 earlier check-ins to establish a baseline'
+    : isFlat
+      ? `Matches your earlier baseline of ${metric.baseline}`
+      : `${Math.abs(metric.diff!)} points ${isUp ? 'above' : 'below'} your earlier baseline (${metric.baseline})`;
 
   return (
     <div
@@ -124,13 +144,20 @@ function MetricTile({ metric }: { metric: MetricSummary }) {
         padding: 14,
       }}
     >
-      <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6 }}>{metric.label}</div>
+      <div style={{ fontSize: 11, color: COLORS.textMuted, marginBottom: 6 }}>
+        {metric.label} · window average
+      </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, color: COLORS.textPrimary }}>{metric.current}</span>
-        <span style={{ fontSize: 12, fontWeight: 700, color }}>
-          {arrow} {isUp ? '+' : ''}
-          {metric.diffPct}%
+        <span style={{ fontSize: 26, fontWeight: 800, color: COLORS.textPrimary }}>
+          {metric.periodAvg}
+          <span style={{ fontSize: 10, color: COLORS.textMuted, marginLeft: 3 }}>/ 100</span>
         </span>
+        {hasBaseline && (
+          <span style={{ fontSize: 12, fontWeight: 700, color }}>
+            {arrow} {isUp ? '+' : ''}
+            {metric.diff} pts
+          </span>
+        )}
       </div>
       <div style={{ fontSize: 11, color: COLORS.textSecondary, lineHeight: 1.4, marginBottom: 8 }}>
         {directionLabel}
@@ -140,6 +167,8 @@ function MetricTile({ metric }: { metric: MetricSummary }) {
           data={metric.spark}
           color={color === COLORS.textMuted ? COLORS.blue : color}
           height={28}
+          showScale={false}
+          ariaLabel={`${metric.label} scores in the selected window`}
         />
       )}
     </div>
@@ -162,10 +191,10 @@ export function ProfileStatsExplainer() {
     >
       <Icon name="bulb" size={14} color={COLORS.blue} style={{ marginTop: 3, flexShrink: 0 }} />
       <div style={{ fontSize: 12, color: COLORS.textSecondary, lineHeight: 1.55 }}>
-        <strong style={{ color: COLORS.textPrimary }}>How comparisons work:</strong> your &ldquo;baseline&rdquo;
-        is your average across all check-ins outside the current window. The arrow shows whether
-        today is above or below that baseline — green when it&apos;s healthier, red when it&apos;s
-        worse. Less stress = better, so a red ▼ on stress means improvement.
+        <strong style={{ color: COLORS.textPrimary }}>How comparisons work:</strong> each tile shows
+        the average for the selected window on a 0–100 scale. After at least 3 earlier check-ins,
+        the arrow compares that window with your earlier baseline in points. Green means a
+        healthier direction; for stress, a lower score is healthier.
       </div>
     </div>
   );
