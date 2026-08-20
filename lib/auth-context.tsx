@@ -13,7 +13,7 @@ type AuthCtx = {
   loading: boolean;
   subStatus: SubscriptionStatus | null;
   subLoading: boolean;
-  refreshSubStatus: () => void;
+  refreshSubStatus: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthCtx>({
@@ -24,7 +24,7 @@ const AuthContext = createContext<AuthCtx>({
   loading: true,
   subStatus: null,
   subLoading: true,
-  refreshSubStatus: () => {},
+  refreshSubStatus: async () => {},
 });
 
 /**
@@ -130,10 +130,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshProfile = useCallback(() => {
     if (user?.id) fetchProfileData(user.id);
-  }, [user?.id, fetchProfileData]);
+  }, [user, fetchProfileData]);
 
-  const refreshSubStatus = useCallback(() => {
-    fetchSubStatus();
+  const refreshSubStatus = useCallback(async () => {
+    await fetchSubStatus();
   }, [fetchSubStatus]);
 
   return (

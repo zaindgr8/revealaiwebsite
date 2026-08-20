@@ -32,6 +32,23 @@ import { signalTone, type IntentAnalysis } from '@/lib/intentAnalysis';
 
 const POLL_MS = 4000;
 
+/**
+ * How long a session may sit at 'uploaded' before the page stops calling it
+ * "Queued" and offers a way out.
+ *
+ * Normally this state lasts a second or two — the upload flow fires
+ * startProcessing and the route flips the row to 'transcribing' almost
+ * immediately. But every failure BEFORE that first write leaves the session
+ * here with a null error and no way forward: the route checks its API key ahead
+ * of anything else and returns 500 without touching the database, so a missing
+ * key on the server strands the row silently. That happened on production on
+ * 19 August, to two different users, and the page span forever on both.
+ *
+ * Long enough not to alarm anyone during the normal window, short enough that
+ * nobody sits watching a spinner that is never going to stop.
+ */
+const STALL_AFTER_MS = 20000;
+
 const STATUS_COPY: Record<IntentStatus, { title: string; detail: string }> = {
   draft: { title: 'Not started', detail: 'This session was never recorded.' },
   awaiting_upload: {
@@ -70,6 +87,10 @@ function ResultInner() {
   const [retrying, setRetrying] = useState(false);
   const [swapping, setSwapping] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [stalled, setStalled] = useState(false);
+  // When we first saw this session sitting at 'uploaded'. Null whenever it is
+  // in any other state, so leaving and re-entering that state restarts the clock.
+  const uploadedSinceRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Polling means 'analysing' is seen repeatedly. Without this the page would
   // fire a fresh analysis every four seconds; the route is idempotent, but only
@@ -92,6 +113,20 @@ function ResultInner() {
         setSession(s);
         setNameDraft((prev) => prev || s.other_speaker_name || '');
         setLoading(false);
+
+        // Deliberately not auto-firing startProcessing here, the way the
+        // analysis below is auto-fired. The upload flow has already called it,
+        // and the window between that call and the route's first write is
+        // exactly when this page is mounting — firing again inside it would
+        // start a second transcription of the same audio and bill for it twice.
+        // A stalled session gets a button instead, and a person decides.
+        if (s.status === 'uploaded') {
+          uploadedSinceRef.current ??= Date.now();
+          if (Date.now() - uploadedSinceRef.current > STALL_AFTER_MS) setStalled(true);
+        } else {
+          uploadedSinceRef.current = null;
+          setStalled(false);
+        }
 
         // I-5. Transcription hands over at 'analysing' and stops; this is what
         // picks the session up. Kicked from the page rather than chained inside
@@ -127,6 +162,8 @@ function ResultInner() {
     if (!session) return;
     setRetrying(true);
     setError(null);
+    setStalled(false);
+    uploadedSinceRef.current = null;
     try {
       await startProcessing(session.id);
       const s = await getIntentSession(session.id);
@@ -239,7 +276,7 @@ function ResultInner() {
       <div style={{ maxWidth: 680 }}>
         {error && <Notice tone="danger">{error}</Notice>}
 
-        {inProgress && (
+        {inProgress && !stalled && (
           <Card>
             <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
               <Spinner size={20} />
@@ -256,6 +293,33 @@ function ResultInner() {
               You can leave this page. The work carries on and the result will be
               here when you come back.
             </p>
+          </Card>
+        )}
+
+        {/*
+          Stuck at 'uploaded'. Not an error state in the database — the row has
+          no error on it, because the failure happened before anything could be
+          written there. Which is exactly why it needs its own affordance: the
+          'failed' card below never renders for these, so without this the page
+          spins forever and the recording is unreachable.
+        */}
+        {stalled && (
+          <Card accent={COLORS.warning}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, marginBottom: 8, fontFamily: 'var(--font-syne)' }}>
+              This has not started
+            </div>
+            <p style={{ fontSize: 13.5, color: COLORS.textSecondary, lineHeight: 1.65, marginBottom: 10 }}>
+              Your recording uploaded correctly and is safely stored, but the
+              processing never began. That usually means something was wrong on
+              our side rather than with your audio.
+            </p>
+            <p style={{ fontSize: 12.5, color: COLORS.textMuted, lineHeight: 1.6, marginBottom: 14 }}>
+              Nothing has been lost. Starting it again costs you nothing but the
+              wait.
+            </p>
+            <Button onClick={retry} primary disabled={retrying}>
+              {retrying ? 'Starting…' : 'Try again'}
+            </Button>
           </Card>
         )}
 

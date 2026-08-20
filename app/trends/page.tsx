@@ -11,14 +11,20 @@ import { EarlyWarnings } from '@/components/EarlyWarnings';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { ProfileStats, ProfileStatsExplainer } from '@/components/ProfileStats';
 import {
-  computeStats,
   getRecentTherapySessions,
-  type Stats,
   type TherapySession,
 } from '@/lib/ai';
-import { fmtDate } from '@/lib/format';
+import { computeStats, type Stats } from '@/lib/graphMetrics';
+import { fmtChartLabels, fmtDate } from '@/lib/format';
 
 function motivationalMessage(s: Stats) {
+  if (s.totalSessions < 2)
+    return {
+      icon: 'sparkles',
+      title: 'Your first point is recorded',
+      body: 'Complete another Reflect when it feels useful, and your first trend will appear.',
+      color: COLORS.blue,
+    };
   if (s.streak >= 7)
     return {
       icon: 'sparkles',
@@ -33,7 +39,7 @@ function motivationalMessage(s: Stats) {
       body: `${s.streak}-day streak. Keep showing up for yourself every day.`,
       color: COLORS.blue,
     };
-  if (s.weeklyAvg >= 75)
+  if (s.recentAvg >= 75)
     return {
       icon: 'sparkles',
       title: "You're thriving",
@@ -47,7 +53,7 @@ function motivationalMessage(s: Stats) {
       body: 'Energy has been low lately. Prioritise sleep and one restorative activity today.',
       color: COLORS.warning,
     };
-  if (s.weeklyAvg < 45)
+  if (s.recentAvg < 45)
     return {
       icon: 'pulse',
       title: "Tough stretch — you're not alone",
@@ -66,6 +72,7 @@ function TrendsInner() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [sessions, setSessions] = useState<TherapySession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     getRecentTherapySessions(60)
@@ -73,9 +80,10 @@ function TrendsInner() {
         setSessions(s);
         setStats(computeStats(s));
       })
-      .catch(() => {
+      .catch((error) => {
         setSessions([]);
         setStats(null);
+        setLoadError((error as Error).message || 'Could not load saved check-ins.');
       })
       .finally(() => setLoading(false));
   }, []);
@@ -99,10 +107,18 @@ function TrendsInner() {
         </div>
       )}
 
-      {!loading && !stats && (
+      {!loading && !stats && !loadError && (
         <Card>
           <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
             No history yet. Complete a few daily check-ins to see your trends.
+          </div>
+        </Card>
+      )}
+
+      {!loading && loadError && (
+        <Card>
+          <div role="alert" style={{ fontSize: 13, color: COLORS.danger, lineHeight: 1.6 }}>
+            Your saved trends could not be loaded. Refresh the page to try again.
           </div>
         </Card>
       )}
@@ -118,7 +134,7 @@ function TrendsInner() {
           <div style={{ height: 16 }} />
 
           <Grid cols={3} gap={14} style={{ marginBottom: 14 }}>
-            <StatBox big={stats.weeklyAvg.toString()} sub="Avg Mood" />
+            <StatBox big={stats.recentAvg.toString()} sub="Recent 7 Avg" />
             <StatBox big={stats.streak.toString()} sub="Day Streak" icon="flame" />
             <StatBox big={stats.totalSessions.toString()} sub="Sessions" />
           </Grid>
@@ -160,7 +176,8 @@ function TrendsInner() {
           )}
 
           <Grid cols={2} gap={14} style={{ marginBottom: 14 }}>
-            <Card style={{ marginBottom: 0 }}>
+            {stats.totalSessions >= 2 ? (
+              <Card style={{ marginBottom: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16, fontFamily: 'var(--font-syne)' }}>
                 <Icon name="trending-up" size={15} color={COLORS.blue} />
                 Highlights
@@ -186,7 +203,17 @@ function TrendsInner() {
                   color={COLORS.warning}
                 />
               </div>
-            </Card>
+              </Card>
+            ) : (
+              <Card style={{ marginBottom: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 6 }}>
+                  Highlights
+                </div>
+                <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
+                  Best and tough-day comparisons appear after your second saved Reflect.
+                </div>
+              </Card>
+            )}
 
             {stats.energyDeclining ? (
               <div
@@ -222,8 +249,13 @@ function TrendsInner() {
                   Overall Direction
                 </div>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-                  Your scores are stable. Keep your daily check-ins to build a clearer picture of
-                  how your week shapes your mood and energy.
+                  {stats.trendDelta === null
+                    ? 'Complete one more Reflect to establish a direction.'
+                    : Math.abs(stats.trendDelta) <= 3
+                      ? 'Your recent mood is broadly steady. Keep checking in to make the pattern clearer.'
+                      : stats.trendDelta > 0
+                        ? `Your recent mood average is up ${stats.trendDelta} points.`
+                        : `Your recent mood average is down ${Math.abs(stats.trendDelta)} points. One change is not a diagnosis, but it may be worth reflecting on what shifted.`}
                 </div>
               </Card>
             )}
@@ -310,12 +342,38 @@ function ChartCard({
   color: string;
   noMargin?: boolean;
 }) {
+  const pointLabels = fmtChartLabels(dates);
+  const rangeLabel = dates.length
+    ? dates.length === 1
+      ? fmtDate(dates[0])
+      : `${fmtDate(dates[0])} to ${fmtDate(dates[dates.length - 1])}`
+    : '';
   return (
     <Card style={noMargin ? { marginBottom: 0 } : { marginBottom: 14 }}>
-      <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginBottom: 16, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
-        {title}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>
+          {title}
+        </div>
+        <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>
+          {data.length} saved check-in{data.length === 1 ? '' : 's'}{rangeLabel ? ` · ${rangeLabel}` : ''}
+        </div>
       </div>
-      <MiniChart data={data} color={color} height={110} labels={dates.map(fmtDate)} />
+      {data.length >= 2 ? (
+        <MiniChart
+          data={data}
+          color={color}
+          height={120}
+          labels={pointLabels}
+          ariaLabel={`${title} over saved check-ins`}
+        />
+      ) : (
+        <div
+          role="status"
+          style={{ minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' }}
+        >
+          One score: {data[0]} / 100. Complete another Reflect to reveal a trend.
+        </div>
+      )}
     </Card>
   );
 }

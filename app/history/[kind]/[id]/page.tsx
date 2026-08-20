@@ -35,7 +35,7 @@ import {
 
 type Loaded =
   | { kind: 'checkin'; session: TherapySession }
-  | { kind: 'chat'; session: CoachSession; messages: ChatMessageRow[] };
+  | { kind: 'chat' | 'live'; session: CoachSession; messages: ChatMessageRow[] };
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -91,9 +91,10 @@ function DetailInner() {
         if (params.kind === 'checkin') {
           const session = await getTherapySession(params.id);
           if (!cancelled) setData(session ? { kind: 'checkin', session } : null);
-        } else if (params.kind === 'chat') {
+        } else if (params.kind === 'chat' || params.kind === 'live') {
           const found = await getCoachSession(params.id);
-          if (!cancelled) setData(found ? { kind: 'chat', ...found } : null);
+          if (!cancelled)
+            setData(found ? { kind: params.kind === 'live' ? 'live' : 'chat', ...found } : null);
         } else if (!cancelled) {
           setError('Unknown session type.');
         }
@@ -158,7 +159,13 @@ function DetailInner() {
 
   return (
     <AppShell
-      title={data.kind === 'checkin' ? 'Voice check-in' : 'Chat'}
+      title={
+        data.kind === 'checkin'
+          ? 'Voice check-in'
+          : data.kind === 'live'
+          ? 'Live call'
+          : 'Chat'
+      }
       subtitle={`${fmtFullDate(created)} · ${fmtTime(created)}`}
       contentMaxWidth={860}
     >

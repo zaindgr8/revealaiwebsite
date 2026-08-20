@@ -3,10 +3,59 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { COLORS } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
+import { supabase } from '@/lib/supabase';
+import { ELENA_LIVE_PERSONA } from '@/prompts/elena';
+import { DEFAULT_VOICE, VOICES, resolveVoice } from '@/lib/voices';
+import { GEMINI_LIVE_MODEL } from '@/lib/geminiModel';
+
+/*
+  Tints of the brand palette.
+
+  lib/theme.ts holds solid brand values only, and this card needs the same
+  values at low opacity for glows, soft fills and shadows. They live here as
+  named constants so no raw slate or purple returns to the file.
+*/
+const INK_SHADOW = 'rgba(17, 17, 24, 0.08)';
+const INK_SHADOW_SOFT = 'rgba(17, 17, 24, 0.06)';
+const BLUE_SOFT = 'rgba(37, 99, 235, 0.10)';
+const BLUE_GLOW = 'rgba(37, 99, 235, 0.25)';
+const SKY_GLOW = 'rgba(14, 165, 233, 0.35)';
+const DANGER_SOFT = 'rgba(239, 68, 68, 0.08)';
+const MUTED_BAR_TOP = 'rgba(138, 138, 154, 0.45)';
+const MUTED_BAR_BOTTOM = 'rgba(138, 138, 154, 0.18)';
+
+export type LiveTranscriptTurn = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+};
 
 interface LiveVoiceChatProps {
-  onSessionComplete?: (transcript: { role: string; content: string }[]) => void;
+  onSessionComplete?: (
+    transcript: LiveTranscriptTurn[],
+    durationSeconds: number
+  ) => void;
   systemInstructionText?: string;
+  /**
+   * Google prebuilt voice id. The caller reads it from the user's profile;
+   * an unknown or missing value falls back to DEFAULT_VOICE rather than
+   * failing the call.
+   */
+  voiceName?: string;
+  /** Creates the durable database session before audio is sent to Gemini. */
+  onSessionStart?: () => Promise<void>;
+  /** Persists completed turns while the call is still running. */
+  onTranscriptTurn?: (turn: LiveTranscriptTurn) => Promise<void> | void;
+  /**
+   * Called once per spoken user turn, with what the user said, as soon as the
+   * model starts answering it. Return false to end the call immediately.
+   *
+   * This is how T-8 reaches a live call. The component stays transport-only:
+   * it reports the turn and obeys the answer, and the caller decides what
+   * counts as a reason to stop.
+   */
+  onUserTurn?: (text: string) => Promise<boolean> | boolean;
+  disabledReason?: string;
 }
 
 interface MessageLog {
@@ -16,9 +65,53 @@ interface MessageLog {
   timestamp: string;
 }
 
+type BrowserWindow = Window &
+  typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+
+type GeminiLiveResponse = {
+  setupComplete?: unknown;
+  sessionResumptionUpdate?: { newHandle?: unknown };
+  goAway?: unknown;
+  serverContent?: {
+    interrupted?: boolean;
+    inputTranscription?: { text?: string };
+    outputTranscription?: { text?: string };
+    modelTurn?: { parts?: Array<{ inlineData?: { data?: string } }> };
+    turnComplete?: boolean;
+  };
+};
+
+function audioContextConstructor(): typeof AudioContext {
+  return window.AudioContext || (window as BrowserWindow).webkitAudioContext!;
+}
+
+async function decodeGeminiMessage(data: unknown): Promise<GeminiLiveResponse> {
+  let raw: string;
+  if (typeof data === 'string') {
+    raw = data;
+  } else if (data instanceof Blob) {
+    raw = await data.text();
+  } else if (data instanceof ArrayBuffer) {
+    raw = new TextDecoder().decode(data);
+  } else if (ArrayBuffer.isView(data)) {
+    raw = new TextDecoder().decode(
+      new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+    );
+  } else {
+    throw new Error(`Unsupported WebSocket message type: ${Object.prototype.toString.call(data)}`);
+  }
+
+  return JSON.parse(raw) as GeminiLiveResponse;
+}
+
 export default function LiveVoiceChat({
   onSessionComplete,
   systemInstructionText,
+  voiceName = DEFAULT_VOICE,
+  onSessionStart,
+  onTranscriptTurn,
+  onUserTurn,
+  disabledReason,
 }: LiveVoiceChatProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -40,7 +133,21 @@ export default function LiveVoiceChat({
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const isMutedRef = useRef(false);
-  isMutedRef.current = isMuted;
+  const callDurationRef = useRef(0);
+  const sessionActiveRef = useRef(false);
+  const completionFiredRef = useRef(false);
+  const setupCompleteRef = useRef(false);
+  const reconnectingRef = useRef(false);
+  const resumptionHandleRef = useRef<string | null>(null);
+  const finaliseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const screenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const messagesRef = useRef<MessageLog[]>([]);
+  const emittedTurnIdsRef = useRef(new Set<string>());
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
 
   // Visualizer canvas ref
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -53,11 +160,143 @@ export default function LiveVoiceChat({
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Transcription arrives a few words at a time, from both sides at once. Each
+  // fragment has to extend the speaker's open turn rather than become its own
+  // line, or a single sentence renders as a column of one-word rows. The ids
+  // live in a ref so a fragment can find the turn it belongs to without the
+  // socket handler depending on `messages`.
+  const openTurnRef = useRef<{ user: string | null; assistant: string | null }>({
+    user: null,
+    assistant: null,
+  });
+  const turnCounterRef = useRef(0);
+
+  const replaceMessages = useCallback(
+    (update: (current: MessageLog[]) => MessageLog[]) => {
+      const next = update(messagesRef.current);
+      messagesRef.current = next;
+      setMessages(next);
+    },
+    []
+  );
+
+  const appendTranscript = useCallback((role: 'user' | 'assistant', chunk: string) => {
+    if (!chunk) return;
+
+    const openId = openTurnRef.current[role];
+    if (openId) {
+      replaceMessages((prev) =>
+        prev.map((m) => (m.id === openId ? { ...m, content: m.content + chunk } : m))
+      );
+      return;
+    }
+
+    // The id is claimed outside the updater, so a double-invoked updater in
+    // development cannot mint two rows for one turn.
+    const id = `${role}-${turnCounterRef.current++}`;
+    openTurnRef.current[role] = id;
+    replaceMessages((prev) => [
+      ...prev,
+      {
+        id,
+        role,
+        content: chunk,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+  }, [replaceMessages]);
+
+  // Close both turns so the next fragment starts a fresh line.
+  const onTranscriptTurnRef = useRef(onTranscriptTurn);
+  useEffect(() => {
+    onTranscriptTurnRef.current = onTranscriptTurn;
+  }, [onTranscriptTurn]);
+
+  const finaliseRole = useCallback((role: 'user' | 'assistant') => {
+    const id = openTurnRef.current[role];
+    openTurnRef.current[role] = null;
+    if (!id || emittedTurnIdsRef.current.has(id)) return;
+
+    const turn = messagesRef.current.find((message) => message.id === id);
+    if (!turn?.content.trim()) return;
+    emittedTurnIdsRef.current.add(id);
+    void Promise.resolve(
+      onTranscriptTurnRef.current?.({
+        id: turn.id,
+        role: turn.role,
+        content: turn.content.trim(),
+      })
+    ).catch((err) => console.error('[LiveVoiceChat] Could not persist turn:', err));
+  }, []);
+
+  const closeTurns = useCallback(() => {
+    finaliseRole('user');
+    finaliseRole('assistant');
+  }, [finaliseRole]);
+
+  // What the user has said in the turn now in progress, and whether that turn
+  // has already been handed to onUserTurn. Kept in refs, not state, because
+  // the socket handler reads them on every frame and must not be re-created
+  // each time a caption arrives.
+  const userTurnTextRef = useRef('');
+  const previousUserTailRef = useRef('');
+  const lastScreenedTextRef = useRef('');
+
+  // The socket handler is created once per call and would otherwise capture
+  // the first onUserTurn it saw. Kept current in an effect rather than during
+  // render, which React forbids.
+  const onUserTurnRef = useRef(onUserTurn);
+  useEffect(() => {
+    onUserTurnRef.current = onUserTurn;
+  }, [onUserTurn]);
+
+  const finishConversationRef = useRef<(reason?: string) => void>(() => {});
+
+  const scheduleUserScreen = useCallback((delayMs = 350) => {
+    if (screenTimerRef.current) clearTimeout(screenTimerRef.current);
+    screenTimerRef.current = setTimeout(() => {
+      const current = userTurnTextRef.current.trim();
+      if (!current) return;
+      const text = `${previousUserTailRef.current}\n${current}`.trim().slice(-4000);
+      if (!text || text === lastScreenedTextRef.current) return;
+      lastScreenedTextRef.current = text;
+
+      const handler = onUserTurnRef.current;
+      if (!handler) return;
+      void Promise.resolve(handler(text))
+        .then((mayContinue) => {
+          if (mayContinue === false) finishConversationRef.current('crisis');
+        })
+        .catch((err) =>
+          console.error('[LiveVoiceChat] User-turn handler failed:', err)
+        );
+    }, delayMs);
+  }, []);
+
+  const finaliseCurrentTurn = useCallback(() => {
+    if (finaliseTimerRef.current) {
+      clearTimeout(finaliseTimerRef.current);
+      finaliseTimerRef.current = null;
+    }
+    const userText = userTurnTextRef.current.trim();
+    if (userText) previousUserTailRef.current = userText.slice(-240);
+    closeTurns();
+    userTurnTextRef.current = '';
+  }, [closeTurns]);
+
+  // Transcriptions are a side channel with no ordering guarantee. Give late
+  // fragments a short grace period, and every new fragment restarts both the
+  // finalisation timer and safety screening.
+  const scheduleTurnFinalisation = useCallback(() => {
+    if (finaliseTimerRef.current) clearTimeout(finaliseTimerRef.current);
+    finaliseTimerRef.current = setTimeout(finaliseCurrentTurn, 750);
+  }, [finaliseCurrentTurn]);
+
   // Audio queue playback (24kHz PCM from Gemini Multimodal Live API)
   const playAudioChunk = useCallback((base64PCM: string) => {
     try {
       if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
-        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        const AudioCtx = audioContextConstructor();
         audioCtxRef.current = new AudioCtx({ sampleRate: 24000 });
       }
 
@@ -131,6 +370,21 @@ export default function LiveVoiceChat({
     }
   }, []);
 
+  const stopMicProcessor = useCallback(() => {
+    if (processorRef.current) {
+      try {
+        processorRef.current.disconnect();
+      } catch {}
+      processorRef.current.onaudioprocess = null;
+      processorRef.current = null;
+    }
+
+    if (micAudioCtxRef.current) {
+      void micAudioCtxRef.current.close().catch(() => {});
+      micAudioCtxRef.current = null;
+    }
+  }, []);
+
   // Stop & Clean up media streams & connections
   const cleanup = useCallback(() => {
     setIsConnected(false);
@@ -141,20 +395,14 @@ export default function LiveVoiceChat({
       clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = null;
     }
-
-    if (processorRef.current) {
-      try {
-        processorRef.current.disconnect();
-      } catch {}
-      processorRef.current = null;
-    }
-
-    if (micAudioCtxRef.current) {
-      try {
-        micAudioCtxRef.current.close();
-      } catch {}
-      micAudioCtxRef.current = null;
-    }
+    if (finaliseTimerRef.current) clearTimeout(finaliseTimerRef.current);
+    if (screenTimerRef.current) clearTimeout(screenTimerRef.current);
+    if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+    finaliseTimerRef.current = null;
+    screenTimerRef.current = null;
+    connectTimerRef.current = null;
+    setupCompleteRef.current = false;
+    stopMicProcessor();
 
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -167,19 +415,23 @@ export default function LiveVoiceChat({
       }
       wsRef.current = null;
     }
-  }, [stopAudioQueue]);
+  }, [stopAudioQueue, stopMicProcessor]);
 
   // Start microphone capture & stream to WebSocket (16kHz PCM)
   const startMicCapture = useCallback(async (ws: WebSocket, stream: MediaStream) => {
     try {
       mediaStreamRef.current = stream;
+      stopMicProcessor();
 
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = audioContextConstructor();
       const micCtx = new AudioCtx({ sampleRate: 16000 });
       micAudioCtxRef.current = micCtx;
 
       const source = micCtx.createMediaStreamSource(stream);
-      const processor = micCtx.createScriptProcessor(4096, 1, 1);
+      // 512 samples at 16 kHz is 32 ms, inside Google's 20–40 ms target.
+      // AudioWorklet remains the eventual replacement for ScriptProcessor,
+      // but this removes the previous 256 ms buffering delay now.
+      const processor = micCtx.createScriptProcessor(512, 1, 1);
       processorRef.current = processor;
 
       processor.onaudioprocess = (e) => {
@@ -205,12 +457,10 @@ export default function LiveVoiceChat({
         ws.send(
           JSON.stringify({
             realtimeInput: {
-              mediaChunks: [
-                {
-                  mimeType: 'audio/pcm;rate=16000',
-                  data: base64Audio,
-                },
-              ],
+              audio: {
+                mimeType: 'audio/pcm;rate=16000',
+                data: base64Audio,
+              },
             },
           })
         );
@@ -223,17 +473,86 @@ export default function LiveVoiceChat({
       setStatus('Microphone error');
       setErrorMsg('Error processing microphone audio stream.');
     }
-  }, []);
+  }, [stopMicProcessor]);
+
+  useEffect(() => {
+    if (!isMuted || !isConnected || !setupCompleteRef.current) return;
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      // Required when automatic VAD is active and audio pauses for >1 second.
+      ws.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
+    }
+  }, [isConnected, isMuted]);
+
+  const onSessionCompleteRef = useRef(onSessionComplete);
+  useEffect(() => {
+    onSessionCompleteRef.current = onSessionComplete;
+  }, [onSessionComplete]);
+
+  const finishConversation = useCallback(
+    (reason = 'user') => {
+      if (completionFiredRef.current) return;
+      completionFiredRef.current = true;
+      reconnectingRef.current = false;
+
+      // Capture the final captions before cleanup clears timers and closes the
+      // transport. The parent also receives turns progressively, so this
+      // snapshot is a last-chance reconciliation after a dropped connection.
+      finaliseCurrentTurn();
+      const transcript: LiveTranscriptTurn[] = messagesRef.current
+        .filter((message) => message.content.trim())
+        .map((message) => ({
+          id: message.id,
+          role: message.role,
+          content: message.content.trim(),
+        }));
+      const durationSeconds = callDurationRef.current;
+      sessionActiveRef.current = false;
+      cleanup();
+
+      if (reason === 'crisis') {
+        setStatus('Call ended for safety');
+      } else if (reason === 'disconnected') {
+        setStatus('Connection closed');
+      } else {
+        setStatus('Call ended');
+      }
+
+      void Promise.resolve(
+        onSessionCompleteRef.current?.(transcript, durationSeconds)
+      ).catch((err) => console.error('[LiveVoiceChat] Could not finish session:', err));
+    },
+    [cleanup, finaliseCurrentTurn]
+  );
+
+  useEffect(() => {
+    finishConversationRef.current = finishConversation;
+  }, [finishConversation]);
 
   // Main Call Handler: Start Conversation (Triggered on direct click)
   const startConversation = async () => {
+    if (isConnecting || isConnected || disabledReason) return;
     setErrorMsg(null);
+    completionFiredRef.current = false;
+    sessionActiveRef.current = false;
+    reconnectingRef.current = false;
+    resumptionHandleRef.current = null;
+    setupCompleteRef.current = false;
+    callDurationRef.current = 0;
+    setCallDuration(0);
+    messagesRef.current = [];
+    setMessages([]);
+    emittedTurnIdsRef.current.clear();
+    openTurnRef.current = { user: null, assistant: null };
+    userTurnTextRef.current = '';
+    previousUserTailRef.current = '';
+    lastScreenedTextRef.current = '';
     setIsConnecting(true);
     setStatus('Initializing audio & requesting mic...');
 
     // 1. Synchronously create & resume AudioContext inside the user gesture handler
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const AudioCtx = audioContextConstructor();
       if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
         audioCtxRef.current = new AudioCtx({ sampleRate: 24000 });
       }
@@ -254,6 +573,9 @@ export default function LiveVoiceChat({
           autoGainControl: true,
         },
       });
+      // Own the stream immediately. If token provisioning or WebSocket setup
+      // fails, cleanup can now always extinguish the browser mic indicator.
+      mediaStreamRef.current = stream;
     } catch (err) {
       console.error('[LiveVoiceChat] Microphone permission denied:', err);
       setIsConnecting(false);
@@ -262,64 +584,82 @@ export default function LiveVoiceChat({
       return;
     }
 
-    // 3. Fetch API Key for Gemini WebSocket
-    setStatus('Fetching live API key...');
-    let apiKey = '';
+    // 3. Fetch a one-use ephemeral credential. The permanent Gemini key stays
+    // server-side and this endpoint also re-checks the caller's entitlement.
+    setStatus('Preparing secure connection...');
+    let ephemeralToken = '';
     try {
-      const res = await fetch('/api/gemini-token');
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authToken = sessionData.session?.access_token ?? '';
+      const res = await fetch('/api/gemini-token', {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+      });
       if (!res.ok) {
-        throw new Error('Failed to retrieve Gemini API Key from server');
+        const body = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(
+          res.status === 401
+            ? 'Your session expired. Please sign in again to start a live call.'
+            : res.status === 402
+              ? 'You have no live-call time available. Add minutes in Settings.'
+              : body.error || 'Live Call is temporarily unavailable.'
+        );
       }
-      const data = await res.json();
-      apiKey = data.apiKey;
-      if (!apiKey) {
-        throw new Error('GEMINI_API_KEY environment variable is missing.');
+      const data = (await res.json()) as { token?: string; model?: string };
+      ephemeralToken = data.token ?? '';
+      if (!ephemeralToken || data.model !== GEMINI_LIVE_MODEL) {
+        throw new Error('The secure Live Call credential was invalid.');
       }
+
+      // Create the durable row before any audio leaves the browser. This makes
+      // tab closes, network drops and safety stops recoverable in History.
+      await onSessionStart?.();
+      sessionActiveRef.current = true;
     } catch (err) {
       console.error('[LiveVoiceChat] Token fetch error:', err);
-      stream.getTracks().forEach((t) => t.stop());
-      setIsConnecting(false);
-      setStatus('API Key Missing');
-      setErrorMsg((err as Error).message || 'Failed to retrieve API Key');
+      cleanup();
+      setStatus('Could not start call');
+      setErrorMsg((err as Error).message || 'Live Call could not start.');
       return;
     }
 
-    // 4. Connect to Gemini Multimodal Live API WebSocket
-    setStatus('Connecting to Gemini Multimodal Live API...');
-    const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${apiKey}`;
-
-    try {
+    // 4. Connect to the constrained Live endpoint. A GoAway reconnect reuses
+    // the latest resumption handle and the same one-use token; Google does not
+    // count a resumed session as another use.
+    const connectSocket = (resumeHandle?: string) => {
+      setStatus(resumeHandle ? 'Reconnecting securely...' : 'Connecting securely...');
+      const wsUrl =
+        'wss://generativelanguage.googleapis.com/ws/' +
+        'google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained' +
+        `?access_token=${encodeURIComponent(ephemeralToken)}`;
       const ws = new WebSocket(wsUrl);
+      // Gemini may deliver JSON in binary WebSocket frames. Browsers default
+      // those to Blob objects; ArrayBuffer makes the common binary path
+      // synchronously decodable, while decodeGeminiMessage still accepts Blob
+      // for browsers that already queued a frame before this assignment.
+      ws.binaryType = 'arraybuffer';
       wsRef.current = ws;
+      let messageQueue: Promise<void> = Promise.resolve();
+      if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+      connectTimerRef.current = setTimeout(() => {
+        setErrorMsg('The secure Live Call connection timed out. Please try again.');
+        ws.close();
+      }, 15_000);
 
       ws.onopen = () => {
-        setIsConnecting(false);
-        setIsConnected(true);
-        setStatus('Connected! Speaking with Despina...');
-        setCallDuration(0);
-
-        // Timer interval
-        timerIntervalRef.current = setInterval(() => {
-          setCallDuration((prev) => prev + 1);
-        }, 1000);
-
-        // Send Handshake Setup Payload
-        const defaultPrompt =
-          `You are Despina, a real, warm, empathetic AI therapeutic companion having an authentic live phone call with a friend. ` +
-          `- Speak casually with human warmth, natural rhythm, and natural conversational pauses. ` +
-          `- Keep responses concise (1 to 2 sentences max) so it feels like a real dialogue. ` +
-          `- Do NOT read text formally or act like an AI assistant.`;
-
-        // Try primary model (gemini-2.0-flash-exp / gemini-2.5-flash)
+        setupCompleteRef.current = false;
         const setupMessage = {
           setup: {
-            model: 'models/gemini-2.0-flash-exp',
+            model: `models/${GEMINI_LIVE_MODEL}`,
             generationConfig: {
               responseModalities: ['AUDIO'],
               speechConfig: {
                 voiceConfig: {
                   prebuiltVoiceConfig: {
-                    voiceName: 'Despina', // Smooth & Inviting female voice
+                    // A Google voice id, not the persona's name. The persona
+                    // is Elena in every voice. This was hard-coded to
+                    // 'Despina'; it now follows the user's choice in Settings,
+                    // and resolveVoice keeps a retired id from reaching Google.
+                    voiceName: resolveVoice(voiceName),
                   },
                 },
               },
@@ -327,94 +667,158 @@ export default function LiveVoiceChat({
             systemInstruction: {
               parts: [
                 {
-                  text: systemInstructionText || defaultPrompt,
+                  text: systemInstructionText || ELENA_LIVE_PERSONA,
                 },
               ],
             },
+            // A native-audio model returns AUDIO and nothing else, so without
+            // these two the caption panel and the saved transcript are both
+            // empty. Empty objects are the whole config: they are switches.
+            inputAudioTranscription: {},
+            outputAudioTranscription: {},
+            sessionResumption: resumeHandle ? { handle: resumeHandle } : {},
+            contextWindowCompression: { slidingWindow: {} },
           },
         };
 
         ws.send(JSON.stringify(setupMessage));
-
-        // Start Microphone Streaming
-        startMicCapture(ws, stream);
       };
 
-      ws.onmessage = async (event) => {
-        try {
-          const response = JSON.parse(event.data);
+      ws.onmessage = (event) => {
+        // Blob.text() is asynchronous. Serialising handlers preserves the
+        // provider's frame order, which matters for setupComplete, transcript
+        // fragments and turnComplete.
+        messageQueue = messageQueue.then(async () => {
+          if (completionFiredRef.current) return;
+          const response = await decodeGeminiMessage(event.data);
 
-          // Handle interruption if user spoke over Despina
-          if (response.serverContent?.interrupted) {
-            stopAudioQueue();
+          if (response.setupComplete) {
+            if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
+            connectTimerRef.current = null;
+            setupCompleteRef.current = true;
+            reconnectingRef.current = false;
+            setIsConnecting(false);
+            setIsConnected(true);
+            setStatus('Connected — speaking with Elena');
+            void startMicCapture(ws, stream);
+            if (!timerIntervalRef.current) {
+              timerIntervalRef.current = setInterval(() => {
+                callDurationRef.current += 1;
+                setCallDuration(callDurationRef.current);
+              }, 1000);
+            }
           }
 
-          // Handle incoming audio & text chunks from Gemini
-          if (response.serverContent?.modelTurn?.parts) {
-            let collectedText = '';
+          if (typeof response.sessionResumptionUpdate?.newHandle === 'string') {
+            resumptionHandleRef.current = response.sessionResumptionUpdate.newHandle;
+          }
 
-            for (const part of response.serverContent.modelTurn.parts) {
-              if (part.text) {
-                collectedText += part.text;
-              }
+          if (response.goAway) {
+            reconnectingRef.current = Boolean(resumptionHandleRef.current);
+            if (!reconnectingRef.current) {
+              setErrorMsg('The Live Call reached its connection limit. Please start another call.');
+            }
+            ws.close(1000, reconnectingRef.current ? 'resume' : 'limit');
+            return;
+          }
+
+          const serverContent = response.serverContent;
+
+          // Handle interruption if the user spoke over Elena
+          if (serverContent?.interrupted) {
+            stopAudioQueue();
+            finaliseRole('assistant');
+          }
+
+          // What the user said, and what Elena said back. Both are separate
+          // from the audio stream below — the transcript is a side channel,
+          // not the model's response parts.
+          if (serverContent?.inputTranscription?.text) {
+            const said = serverContent.inputTranscription.text;
+            userTurnTextRef.current += said;
+            appendTranscript('user', said);
+            scheduleUserScreen();
+            if (finaliseTimerRef.current) scheduleTurnFinalisation();
+          }
+          if (serverContent?.outputTranscription?.text) {
+            appendTranscript('assistant', serverContent.outputTranscription.text);
+            if (finaliseTimerRef.current) scheduleTurnFinalisation();
+          }
+
+          // Elena has started answering, so the user has stopped talking. This
+          // is the earliest moment their whole turn is known, and screening it
+          // here rather than at turnComplete cuts a crisis call short by
+          // however long her answer would have taken to finish.
+          const elenaAnswering =
+            Boolean(serverContent?.outputTranscription?.text) ||
+            Boolean(serverContent?.modelTurn?.parts?.length);
+
+          if (elenaAnswering) scheduleUserScreen(0);
+
+          // Play the audio. Text parts are not read here: a native-audio model
+          // never sends them, and reading both would print every reply twice.
+          if (serverContent?.modelTurn?.parts) {
+            for (const part of serverContent.modelTurn.parts) {
               if (part.inlineData?.data) {
                 playAudioChunk(part.inlineData.data);
               }
             }
-
-            if (collectedText.trim()) {
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: `asst-${Date.now()}`,
-                  role: 'assistant',
-                  content: collectedText.trim(),
-                  timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                },
-              ]);
-            }
           }
-        } catch (e) {
+
+          if (serverContent?.turnComplete) {
+            scheduleUserScreen(0);
+            scheduleTurnFinalisation();
+          }
+        }).catch((e) => {
           console.error('[LiveVoiceChat] Error parsing message:', e);
-        }
+        });
       };
 
       ws.onclose = (event) => {
-        cleanup();
-        if (!event.wasClean && event.code !== 1000) {
-          console.warn('[LiveVoiceChat] Connection closed abnormally:', event.code, event.reason);
-          setStatus('Connection Closed');
-          setErrorMsg(`Live Call disconnected (Code ${event.code}${event.reason ? `: ${event.reason}` : ''}). Please try again.`);
-        } else {
-          setStatus('Call Ended');
+        if (completionFiredRef.current) return;
+        stopMicProcessor();
+        setupCompleteRef.current = false;
+        setIsConnected(false);
+
+        if (reconnectingRef.current && resumptionHandleRef.current) {
+          connectSocket(resumptionHandleRef.current);
+          return;
         }
+
+        if (!event.wasClean || event.code !== 1000) {
+          console.warn('[LiveVoiceChat] Connection closed abnormally:', event.code, event.reason);
+          setErrorMsg(
+            `Live Call disconnected (code ${event.code}${event.reason ? `: ${event.reason}` : ''}). The conversation was saved.`
+          );
+        }
+        finishConversationRef.current('disconnected');
       };
 
       ws.onerror = (err) => {
         console.error('[LiveVoiceChat] WebSocket error:', err);
-        setErrorMsg('Live WebSocket connection encountered an error.');
-        cleanup();
+        setErrorMsg('The Live Call connection failed. The conversation will be saved.');
+        ws.close();
       };
+    };
+
+    try {
+      connectSocket();
     } catch (err) {
       console.error('[LiveVoiceChat] Connection initiation failed:', err);
-      stream.getTracks().forEach((t) => t.stop());
-      setIsConnecting(false);
-      setStatus('Connection Failed');
+      setStatus('Connection failed');
       setErrorMsg('Failed to open WebSocket connection.');
-    }
-  };
-
-  const endConversation = () => {
-    cleanup();
-    if (onSessionComplete) {
-      onSessionComplete(messages.map((m) => ({ role: m.role, content: m.content })));
+      finishConversation('disconnected');
     }
   };
 
   // Component unmount cleanup
   useEffect(() => {
     return () => {
-      cleanup();
+      if (sessionActiveRef.current && !completionFiredRef.current) {
+        finishConversationRef.current('unmount');
+      } else {
+        cleanup();
+      }
     };
   }, [cleanup]);
 
@@ -435,7 +839,7 @@ export default function LiveVoiceChat({
       const barGap = 3;
       const barCount = Math.floor(width / (barWidth + barGap));
 
-      let dataArray = new Uint8Array(barCount);
+      const dataArray = new Uint8Array(barCount);
       if (analyserRef.current && isSpeaking) {
         analyserRef.current.getByteFrequencyData(dataArray);
       }
@@ -456,8 +860,8 @@ export default function LiveVoiceChat({
           gradient.addColorStop(0, COLORS.blue);
           gradient.addColorStop(1, COLORS.gradientEnd);
         } else {
-          gradient.addColorStop(0, 'rgba(148, 163, 184, 0.3)');
-          gradient.addColorStop(1, 'rgba(148, 163, 184, 0.1)');
+          gradient.addColorStop(0, MUTED_BAR_TOP);
+          gradient.addColorStop(1, MUTED_BAR_BOTTOM);
         }
 
         ctx.fillStyle = gradient;
@@ -482,15 +886,24 @@ export default function LiveVoiceChat({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const selectedVoice = resolveVoice(voiceName);
+  const selectedVoiceTone = VOICES.find((voice) => voice.id === selectedVoice)?.tone ?? 'Natural';
+
   return (
     <div
       style={{
-        background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.95))',
+        /*
+          A white brand card, like every other Card in the product.
+
+          It was a dark slate panel while the text colours stayed on the light
+          theme: ink headings on a near-black surface, which no one could read.
+          The palette has one surface set, so this card uses it.
+        */
+        background: COLORS.card,
         border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 24,
         padding: 32,
-        backdropFilter: 'blur(16px)',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+        boxShadow: `0 20px 40px ${INK_SHADOW_SOFT}`,
         color: COLORS.textPrimary,
         display: 'flex',
         flexDirection: 'column',
@@ -517,7 +930,9 @@ export default function LiveVoiceChat({
             : isConnected
             ? `radial-gradient(circle, ${COLORS.gradientStart} 0%, transparent 70%)`
             : 'transparent',
-          opacity: isSpeaking ? 0.35 : isConnected ? 0.15 : 0,
+          // Lower than before, because the glow now sits on white and not on
+          // near-black. The old values washed the heading out.
+          opacity: isSpeaking ? 0.18 : isConnected ? 0.08 : 0,
           transition: 'all 0.5s ease',
           pointerEvents: 'none',
         }}
@@ -529,8 +944,8 @@ export default function LiveVoiceChat({
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          background: 'rgba(255, 255, 255, 0.06)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: COLORS.surface,
+          border: `1px solid ${COLORS.cardBorder}`,
           borderRadius: 20,
           padding: '6px 14px',
           fontSize: 12,
@@ -546,8 +961,17 @@ export default function LiveVoiceChat({
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: isConnected ? COLORS.green : isConnecting ? COLORS.sky : COLORS.danger,
-            boxShadow: isConnected ? `0 0 10px ${COLORS.green}` : 'none',
+            /*
+              Idle was red, which reads as a fault. "Ready for live call" is
+              not a fault, and the guidelines keep red for errors and for
+              destructive actions. Idle is now the muted label grey.
+            */
+            background: isConnected
+              ? COLORS.success
+              : isConnecting
+              ? COLORS.sky
+              : COLORS.textMuted,
+            boxShadow: isConnected ? `0 0 10px ${COLORS.success}` : 'none',
             display: 'inline-block',
           }}
         />
@@ -576,11 +1000,13 @@ export default function LiveVoiceChat({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            // The outer glow used to end in purple, which is in no part of the
+            // palette. Blue to sky is the brand gradient, so the glow follows it.
             boxShadow: isSpeaking
-              ? `0 0 40px ${COLORS.sky}, 0 0 80px rgba(168, 85, 247, 0.4)`
+              ? `0 0 40px ${SKY_GLOW}, 0 0 80px ${BLUE_GLOW}`
               : isConnected
-              ? `0 0 24px rgba(37, 99, 235, 0.4)`
-              : '0 8px 24px rgba(0, 0, 0, 0.3)',
+              ? `0 0 24px ${BLUE_GLOW}`
+              : `0 8px 24px ${INK_SHADOW}`,
             transition: 'all 0.3s ease',
             transform: isSpeaking ? 'scale(1.06)' : 'scale(1)',
           }}
@@ -590,14 +1016,18 @@ export default function LiveVoiceChat({
               width: 98,
               height: 98,
               borderRadius: '50%',
-              background: COLORS.card,
+              // Off-white, not white: a white disc on a white card would erase
+              // the ring into a floating blue outline.
+              background: COLORS.surface,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <span style={{ fontSize: 36 }}>🎙️</span>
+            {/* The emoji rendered grey on every platform and could not take a
+                brand colour. The icon can. */}
+            <Icon name="mic" size={38} color={COLORS.blue} />
           </div>
         </div>
 
@@ -611,28 +1041,28 @@ export default function LiveVoiceChat({
             marginBottom: 4,
           }}
         >
-          Despina Voice Companion
+          Elena Voice Companion
         </h3>
         <p style={{ fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', margin: 0 }}>
-          Gemini Multimodal Live • Smooth &amp; Inviting
+          Gemini Live • {selectedVoiceTone} voice
         </p>
       </div>
 
       {/* Real-time Spectrum Waveform */}
       <div style={{ width: '100%', height: 48, marginBottom: 24, display: 'flex', justifyContent: 'center' }}>
-        <canvas ref={canvasRef} width={340} height={48} style={{ width: 340, height: 48 }} />
+        <canvas aria-hidden="true" ref={canvasRef} width={340} height={48} style={{ width: 340, height: 48, maxWidth: '100%' }} />
       </div>
 
       {/* Error Banner */}
       {errorMsg && (
         <div
           style={{
-            background: 'rgba(239, 68, 68, 0.15)',
+            background: DANGER_SOFT,
             border: `1px solid ${COLORS.danger}`,
             borderRadius: 12,
             padding: '10px 16px',
             fontSize: 13,
-            color: '#fca5a5',
+            color: COLORS.danger,
             marginBottom: 20,
             textAlign: 'center',
             width: '100%',
@@ -648,7 +1078,9 @@ export default function LiveVoiceChat({
           <button
             type="button"
             onClick={startConversation}
-            disabled={isConnecting}
+            disabled={isConnecting || Boolean(disabledReason)}
+            aria-label="Start live call"
+            title={disabledReason}
             style={{
               background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
               color: COLORS.white,
@@ -658,16 +1090,17 @@ export default function LiveVoiceChat({
               fontSize: 15,
               fontWeight: 800,
               fontFamily: 'var(--font-syne)',
-              cursor: isConnecting ? 'not-allowed' : 'pointer',
-              boxShadow: '0 8px 24px rgba(37, 99, 235, 0.4)',
+              cursor: isConnecting || disabledReason ? 'not-allowed' : 'pointer',
+              boxShadow: `0 8px 24px ${BLUE_GLOW}`,
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
               gap: 10,
-              opacity: isConnecting ? 0.7 : 1,
+              opacity: isConnecting || disabledReason ? 0.55 : 1,
             }}
           >
-            <span>{isConnecting ? '⏳ Connecting...' : '📞 Start Live Call'}</span>
+            <Icon name={isConnecting ? 'time' : 'phone'} size={17} color={COLORS.white} />
+            <span>{isConnecting ? 'Connecting...' : 'Start Live Call'}</span>
           </button>
         ) : (
           <>
@@ -675,12 +1108,13 @@ export default function LiveVoiceChat({
             <button
               type="button"
               onClick={() => setIsMuted((prev) => !prev)}
+              aria-label={isMuted ? 'Unmute microphone' : 'Mute microphone'}
               style={{
                 width: 48,
                 height: 48,
                 borderRadius: '50%',
-                background: isMuted ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-                border: `1px solid ${isMuted ? COLORS.danger : 'rgba(255, 255, 255, 0.15)'}`,
+                background: isMuted ? DANGER_SOFT : COLORS.surface,
+                border: `1px solid ${isMuted ? COLORS.danger : COLORS.cardBorder}`,
                 color: isMuted ? COLORS.danger : COLORS.textPrimary,
                 cursor: 'pointer',
                 display: 'flex',
@@ -696,9 +1130,12 @@ export default function LiveVoiceChat({
             {/* End Call Button */}
             <button
               type="button"
-              onClick={endConversation}
+              onClick={() => finishConversation('user')}
+              aria-label="End live call"
               style={{
-                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                // One flat brand red. The old gradient ended on a shade the
+                // palette does not define.
+                background: COLORS.danger,
                 color: COLORS.white,
                 border: 'none',
                 borderRadius: 30,
@@ -707,25 +1144,27 @@ export default function LiveVoiceChat({
                 fontWeight: 800,
                 fontFamily: 'var(--font-syne)',
                 cursor: 'pointer',
-                boxShadow: '0 8px 20px rgba(239, 68, 68, 0.4)',
+                boxShadow: `0 8px 20px ${INK_SHADOW}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
               }}
             >
-              <span>🛑 End Call</span>
+              <Icon name="stop" size={16} color={COLORS.white} />
+              <span>End Call</span>
             </button>
 
             {/* Toggle Transcript */}
             <button
               type="button"
               onClick={() => setShowTranscript((prev) => !prev)}
+              aria-label={showTranscript ? 'Hide live captions' : 'Show live captions'}
               style={{
                 width: 48,
                 height: 48,
                 borderRadius: '50%',
-                background: showTranscript ? 'rgba(37, 99, 235, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-                border: `1px solid ${showTranscript ? COLORS.blue : 'rgba(255, 255, 255, 0.15)'}`,
+                background: showTranscript ? BLUE_SOFT : COLORS.surface,
+                border: `1px solid ${showTranscript ? COLORS.blue : COLORS.cardBorder}`,
                 color: showTranscript ? COLORS.blue : COLORS.textPrimary,
                 cursor: 'pointer',
                 display: 'flex',
@@ -741,6 +1180,21 @@ export default function LiveVoiceChat({
         )}
       </div>
 
+      {!isConnected && disabledReason && (
+        <p
+          role="status"
+          style={{
+            margin: '12px 0 0',
+            color: COLORS.textMuted,
+            fontSize: 12,
+            lineHeight: 1.5,
+            textAlign: 'center',
+          }}
+        >
+          {disabledReason}
+        </p>
+      )}
+
       {/* Expandable Live Transcript Log */}
       {showTranscript && (
         <div
@@ -749,10 +1203,10 @@ export default function LiveVoiceChat({
             width: '100%',
             maxHeight: 180,
             overflowY: 'auto',
-            background: 'rgba(0, 0, 0, 0.3)',
+            background: COLORS.surface,
             borderRadius: 14,
             padding: 14,
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            border: `1px solid ${COLORS.cardBorder}`,
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
@@ -760,12 +1214,19 @@ export default function LiveVoiceChat({
         >
           {messages.length === 0 ? (
             <div style={{ fontSize: 12, color: COLORS.textSecondary, textAlign: 'center', fontStyle: 'italic' }}>
-              Live transcript captions will appear here as Despina speaks...
+              Live captions will appear here once the call starts...
             </div>
           ) : (
             messages.map((m) => (
               <div key={m.id} style={{ fontSize: 12, color: COLORS.textPrimary }}>
-                <span style={{ fontWeight: 700, color: COLORS.blue }}>Despina: </span>
+                <span
+                  style={{
+                    fontWeight: 700,
+                    color: m.role === 'user' ? COLORS.sky : COLORS.blue,
+                  }}
+                >
+                  {m.role === 'user' ? 'You: ' : 'Elena: '}
+                </span>
                 <span>{m.content}</span>
               </div>
             ))

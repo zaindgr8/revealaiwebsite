@@ -20,6 +20,10 @@ const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
   { href: '/therapy', label: 'Reflect', icon: 'pulse' },
   { href: '/chat', label: 'AI Chat', icon: 'chat' },
+  // Real-time spoken call with Elena, over the Gemini Multimodal Live API.
+  // The component was finished in a76cb8e and then rendered nowhere — /therapy
+  // imported it and dropped it. /live is the page that finally shows it.
+  { href: '/live', label: 'Live Call', icon: 'phone' },
   // Feature 2, complete end to end since 15 August: consent, record or upload,
   // speaker-labelled transcript, and the I-5 analysis in /api/intent/analyse.
   // It was reachable here for two demos before it could finish, which was a

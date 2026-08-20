@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { geminiGenerateContentUrl } from '@/lib/geminiModel';
 import { createClient } from '@supabase/supabase-js';
 import { DEEP_QUESTION_PROMPT } from '@/prompts/deepQuestion';
 
 export const maxDuration = 60;
 
 const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  geminiGenerateContentUrl();
 
 
 export async function POST(req: NextRequest) {
@@ -71,8 +72,7 @@ export async function POST(req: NextRequest) {
           },
         ],
         generationConfig: {
-          temperature: 0.4,
-          topP: 0.9,
+          // temperature and topP were here. Gemini 3.x ignores both.
           responseMimeType: 'application/json',
         },
       }),

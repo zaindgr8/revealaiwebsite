@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { geminiGenerateContentUrl } from '@/lib/geminiModel';
 import { createClient } from '@supabase/supabase-js';
 import { SUMMARY_PROMPT } from '@/prompts/summarise';
 
@@ -16,7 +17,7 @@ import { SUMMARY_PROMPT } from '@/prompts/summarise';
 export const maxDuration = 20;
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+  geminiGenerateContentUrl();
 
 
 export async function POST(req: NextRequest) {
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${SUMMARY_PROMPT}\n\n---\n${transcript}` }] }],
         generationConfig: {
-          temperature: 0.2,
+          // temperature was here. Gemini 3.x ignores it.
           responseMimeType: 'application/json',
         },
       }),

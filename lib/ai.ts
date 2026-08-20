@@ -94,7 +94,7 @@ export type ChatMessage = { role: 'user' | 'assistant'; content: string };
  *             appears on the therapy_sessions row it fed into, and listing
  *             both would show one check-in as two entries.
  */
-export type CoachSessionSource = 'chat' | 'checkin';
+export type CoachSessionSource = 'chat' | 'checkin' | 'live';
 
 export type CoachSession = {
   id: string;
@@ -296,6 +296,23 @@ export async function analyzeMood({
   return data as AnalysisResult;
 }
 
+/** Retry only the database write for an already-completed analysis. */
+export async function retrySaveAnalysis(result: AnalysisResult): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch('/api/analyze-mood/save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ result }),
+  });
+  const data = await res.json();
+  if (!res.ok || data?.saved !== true) {
+    throw new Error(data?.error || 'Could not save this result');
+  }
+}
+
 export function buildUserContext(sessions: TherapySession[]): UserContext {
   const now = new Date();
   const hour = now.getHours();
@@ -435,13 +452,17 @@ export async function endCoachSession(sessionId: string): Promise<void> {
  * the user getting into a new conversation.
  */
 async function sweepAbandonedSessions(cutoffIso: string): Promise<void> {
-  // Only standalone chats. An abandoned check-in conversation is closed by the
-  // check-in flow itself, and summarising one would spend a model call on
-  // content that already went into the check-in analysis.
+  // Standalone conversations only. An abandoned check-in conversation is
+  // closed by the check-in flow itself, and summarising one would spend a
+  // model call on content that already went into the check-in analysis.
+  //
+  // Live calls are swept too. A call whose tab was closed mid-conversation
+  // never reaches endConversation, so without this it stays open forever:
+  // never summarised, therefore never remembered, and a blank row in history.
   const { data, error } = await supabase
     .from('coach_sessions')
     .select('id')
-    .eq('source', 'chat')
+    .in('source', ['chat', 'live'])
     .is('ended_at', null)
     .lt('created_at', cutoffIso)
     .limit(5);
@@ -530,7 +551,7 @@ export type HistoryItem = {
    * score, so they never reach the mood chart — which is correct, because a
    * conversation with someone else is not a reading of how the user feels.
    */
-  kind: 'checkin' | 'chat' | 'intent';
+  kind: 'checkin' | 'chat' | 'live' | 'intent';
   created_at: string;
   mood_score: number | null;
   /** detected_mode for a check-in, or a topic for a conversation. */
@@ -568,10 +589,13 @@ export async function getHistoryFeed({
   // Only standalone conversations. A check-in conversation is already
   // represented by its therapy_sessions row — listing both would show one
   // check-in as two separate history entries.
+  //
+  // A live call is standalone in exactly the same way, so it belongs here. It
+  // keeps its own source so the row can say "Live call" rather than "Chat".
   let chats = supabase
     .from('coach_sessions')
-    .select('id, created_at, mood_score, summary, topics, crisis_flagged')
-    .eq('source', 'chat')
+    .select('id, created_at, source, mood_score, summary, topics, crisis_flagged')
+    .in('source', ['chat', 'live'])
     .not('ended_at', 'is', null)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -622,7 +646,7 @@ export async function getHistoryFeed({
     })),
     ...(chatRes.data ?? []).map((r) => ({
       id: r.id as string,
-      kind: 'chat' as const,
+      kind: (r.source === 'live' ? 'live' : 'chat') as 'live' | 'chat',
       created_at: r.created_at as string,
       mood_score: (r.mood_score as number) ?? null,
       // No chip. The other two kinds put something informative here — the mood
@@ -666,6 +690,8 @@ export async function getHistoryFeed({
 
 const HISTORY_TABLES: Record<HistoryItem['kind'], string> = {
   chat: 'coach_sessions',
+  // A live call is a coach_sessions row like a chat. Only the label differs.
+  live: 'coach_sessions',
   checkin: 'therapy_sessions',
   intent: 'intent_sessions',
 };
@@ -771,11 +797,16 @@ export async function deleteTherapySession(id: string) {
   if (error) throw new Error(error.message);
 }
 
-export async function deleteAllTherapySessions() {
+export async function deleteAllHistorySessions() {
   const { data } = await supabase.auth.getUser();
   if (!data.user) throw new Error('Not authenticated');
-  const { error } = await supabase.from('therapy_sessions').delete().eq('user_id', data.user.id);
-  if (error) throw new Error(error.message);
+  const results = await Promise.all([
+    supabase.from('therapy_sessions').delete().eq('user_id', data.user.id),
+    supabase.from('coach_sessions').delete().eq('user_id', data.user.id),
+    supabase.from('intent_sessions').delete().eq('user_id', data.user.id),
+  ]);
+  const failure = results.find((result) => result.error)?.error;
+  if (failure) throw new Error(failure.message);
 }
 
 export async function getAllSessionsForExport() {
@@ -799,12 +830,13 @@ export type Stats = {
   allEnergy: number[];
   allStress: number[];
   allDates: string[];
-  trendPct: number;
+  /** Change between the older and newer halves of the recent check-ins, in points. */
+  trendDelta: number | null;
   energyDeclining: boolean;
   latestMood: number;
   latestMode: string;
   streak: number;
-  weeklyAvg: number;
+  recentAvg: number;
   totalSessions: number;
   best: { score: number; date: string };
   worst: { score: number; date: string };
@@ -823,11 +855,15 @@ export function computeStats(sessions: TherapySession[] | null | undefined): Sta
 
   const last7 = sorted.slice(-7);
 
-  const half = Math.max(1, Math.floor(last7.length / 2));
-  const oldAvg = last7.slice(0, half).reduce((s, x) => s + x.mood_score, 0) / half;
-  const newAvg =
-    last7.slice(half).reduce((s, x) => s + x.mood_score, 0) / Math.max(1, last7.length - half);
-  const trendPct = oldAvg > 0 ? Math.round(((newAvg - oldAvg) / oldAvg) * 100) : 0;
+  let trendDelta: number | null = null;
+  if (last7.length >= 2) {
+    const half = Math.max(1, Math.floor(last7.length / 2));
+    const older = last7.slice(0, half);
+    const newer = last7.slice(half);
+    const oldAvg = older.reduce((sum, session) => sum + session.mood_score, 0) / older.length;
+    const newAvg = newer.reduce((sum, session) => sum + session.mood_score, 0) / newer.length;
+    trendDelta = Math.round(newAvg - oldAvg);
+  }
 
   const forBurnout = sorted.slice(-5);
   let energyDeclining = false;
@@ -838,7 +874,7 @@ export function computeStats(sessions: TherapySession[] | null | undefined): Sta
   }
 
   const streak = computeStreak(sorted);
-  const weeklyAvg = Math.round(last7.reduce((s, x) => s + x.mood_score, 0) / last7.length);
+  const recentAvg = Math.round(last7.reduce((s, x) => s + x.mood_score, 0) / last7.length);
   const best = sorted.reduce((a, b) => (b.mood_score > a.mood_score ? b : a));
   const worst = sorted.reduce((a, b) => (b.mood_score < a.mood_score ? b : a));
 
@@ -852,24 +888,31 @@ export function computeStats(sessions: TherapySession[] | null | undefined): Sta
     allEnergy: sorted.map((s) => s.energy),
     allStress: sorted.map((s) => s.stress),
     allDates: sorted.map((s) => s.created_at),
-    trendPct,
+    trendDelta,
     energyDeclining,
     latestMood: latest.mood_score,
     latestMode: latest.detected_mode,
     streak,
-    weeklyAvg,
+    recentAvg,
     totalSessions: sessions.length,
     best: { score: best.mood_score, date: best.created_at },
     worst: { score: worst.mood_score, date: worst.created_at },
   };
 }
 
-function computeStreak(sortedSessions: TherapySession[]): number {
+export function computeStreak(sortedSessions: TherapySession[], now = new Date()): number {
   if (!sortedSessions.length) return 0;
   const days = [...new Set(sortedSessions.map((s) => new Date(s.created_at).toDateString()))];
+  const today = new Date(now);
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const startsToday = days.includes(today.toDateString());
+  const startsYesterday = days.includes(yesterday.toDateString());
+  if (!startsToday && !startsYesterday) return 0;
+
   let streak = 0;
-  const today = new Date();
-  for (let i = 0; i < 90; i++) {
+  const startOffset = startsToday ? 0 : 1;
+  for (let i = startOffset; i < 90; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() - i);
     if (days.includes(d.toDateString())) streak++;
@@ -891,9 +934,8 @@ export type MetricSummary = {
   label: string;
   current: number; // today's (or last) value
   periodAvg: number; // avg over the selected period
-  baseline: number; // personal all-time baseline (avg of everything outside the period)
-  diff: number; // current - baseline
-  diffPct: number; // diff / baseline * 100, rounded
+  baseline: number | null; // average of earlier check-ins outside the period
+  diff: number | null; // period average - baseline, in score points
   goodWhen: 'up' | 'down';
   spark: number[];
 };
@@ -920,6 +962,13 @@ function daysInPeriod(period: AggregatePeriod): number {
   return 30;
 }
 
+function periodCutoff(period: AggregatePeriod, now: Date): number {
+  if (period === 'daily') {
+    return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  }
+  return now.getTime() - daysInPeriod(period) * 24 * 60 * 60 * 1000;
+}
+
 function avg(arr: number[]): number {
   if (!arr.length) return 0;
   return Math.round(arr.reduce((s, n) => s + n, 0) / arr.length);
@@ -933,13 +982,12 @@ export type ProfileAggregates = {
 
 export function computeProfileAggregates(
   sessions: TherapySession[] | null | undefined,
-  period: AggregatePeriod
+  period: AggregatePeriod,
+  now = new Date()
 ): ProfileAggregates | null {
   if (!sessions || sessions.length === 0) return null;
 
-  const days = daysInPeriod(period);
-  const now = Date.now();
-  const cutoff = now - days * 24 * 60 * 60 * 1000;
+  const cutoff = periodCutoff(period, now);
 
   const sortedAsc = [...sessions].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -948,19 +996,20 @@ export function computeProfileAggregates(
 
   const inPeriod = sortedAsc.filter((s) => new Date(s.created_at).getTime() >= cutoff);
   const baselinePool = sortedAsc.filter((s) => new Date(s.created_at).getTime() < cutoff);
-  // If we have no history before the cutoff, fall back to using all sessions as baseline
-  const baselineSet = baselinePool.length >= 3 ? baselinePool : sortedAsc;
+  // Three earlier check-ins are required before presenting a personal baseline.
+  // Including the selected window in its own baseline mutes the comparison and
+  // makes the explanatory copy untrue.
+  const baselineSet = baselinePool.length >= 3 ? baselinePool : null;
 
   const keys: MetricKey[] = ['mood_score', 'energy', 'stress', 'positivity', 'confidence'];
 
   const metrics: MetricSummary[] = keys.map((key) => {
     const currentValue = latest[key];
     const periodValues = inPeriod.map((s) => s[key]);
-    const baselineValues = baselineSet.map((s) => s[key]);
+    const baselineValues = baselineSet?.map((s) => s[key]) ?? [];
     const periodAvg = inPeriod.length ? avg(periodValues) : currentValue;
-    const baseline = avg(baselineValues);
-    const diff = currentValue - baseline;
-    const diffPct = baseline > 0 ? Math.round((diff / baseline) * 100) : 0;
+    const baseline = baselineSet ? avg(baselineValues) : null;
+    const diff = baseline === null ? null : periodAvg - baseline;
     const spark = inPeriod.slice(-14).map((s) => s[key]);
 
     return {
@@ -970,7 +1019,6 @@ export function computeProfileAggregates(
       periodAvg,
       baseline,
       diff,
-      diffPct,
       goodWhen: GOOD_WHEN[key],
       spark,
     };

@@ -1,18 +1,20 @@
 'use client';
 
 /**
- * Despina Voice Synthesis Helper
- * Persona: Despina — Smooth & Inviting
+ * Elena Voice Synthesis Helper
+ * Persona: Elena, the therapist named everywhere else in the product.
+ * The file and the functions used to say 'Despina', which is a Google voice
+ * id and not a character — it made the persona look like two people.
  * Uses neural AI audio playback (/api/tts) for authentic, warm human voice sound.
  */
 
 let currentAudio: HTMLAudioElement | null = null;
 
-export async function speakDespina(text: string, onEnd?: () => void) {
+export async function speakElena(text: string, onEnd?: () => void) {
   if (typeof window === 'undefined') return;
 
   // Stop any currently playing speech/audio
-  stopDespina();
+  stopElena();
 
   try {
     // 1. Try neural AI speech API for authentic human audio
@@ -51,7 +53,7 @@ export async function speakDespina(text: string, onEnd?: () => void) {
   fallbackWebSpeech(text, onEnd);
 }
 
-export function stopDespina() {
+export function stopElena() {
   if (typeof window === 'undefined') return;
 
   if (currentAudio) {
@@ -90,8 +92,11 @@ function fallbackWebSpeech(text: string, onEnd?: () => void) {
         v.name.includes('Siri')
     );
 
-    let chosenVoice =
-      naturalVoices.find((v) => v.name.toLowerCase().includes('despina')) ||
+    // The first lookup here searched the browser's voice list for 'despina'.
+    // No browser ships a voice by that name — it is a Google Live API id — so
+    // the branch never matched. Removed rather than renamed: 'elena' would not
+    // match either.
+    const chosenVoice =
       naturalVoices.find(
         (v) =>
           v.name.includes('Samantha') ||

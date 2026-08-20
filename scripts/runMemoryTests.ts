@@ -40,6 +40,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import { geminiGenerateContentUrl } from '../lib/geminiModel';
 import { buildMemoryBlock, type MoodPoint, type PastSession } from '../lib/chatMemory';
 // The same constant the route uses. Duplicating it here once meant the A/B
 // could pass against a persona that was never shipped.
@@ -229,7 +230,7 @@ let truncatedCount = 0;
 
 async function callGemini(system: string, user: string, key: string) {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`,
+    `${geminiGenerateContentUrl()}?key=${key}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -242,7 +243,7 @@ async function callGemini(system: string, user: string, key: string) {
         // Identical to the route, including the absence of maxOutputTokens. Do
         // not "improve" it here — the whole point of the A/B is that everything
         // except the memory block is production.
-        generationConfig: { temperature: 0.6, topP: 0.9 },
+        generationConfig: {},
       }),
     }
   );

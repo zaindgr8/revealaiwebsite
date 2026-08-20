@@ -87,6 +87,7 @@ export function WaveformVisualizer({ active, barCount = 30, stream }: Props) {
 
   return (
     <div
+      aria-hidden="true"
       style={{
         display: 'flex',
         alignItems: 'center',

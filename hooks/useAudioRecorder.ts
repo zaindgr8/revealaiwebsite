@@ -38,9 +38,19 @@ async function blobToBase64(blob: Blob): Promise<string> {
 export function useAudioRecorder({
   maxSeconds = 60,
   onComplete,
+  skipBase64 = false,
 }: {
   maxSeconds?: number;
   onComplete?: (result: RecordingResult | null) => void;
+  /**
+   * Skip building the base64 string and return only the Blob.
+   *
+   * The check-in path posts audio as base64 JSON, so it needs it. The
+   * conversation path hands the Blob straight to splitConversation and never
+   * looks at it — and a 20-minute recording is several megabytes, which becomes
+   * a several-megabyte string that is built, held, and thrown away.
+   */
+  skipBase64?: boolean;
 } = {}) {
   const [isRecording, setIsRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
@@ -99,7 +109,7 @@ export function useAudioRecorder({
   const start = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
       setError('Microphone not available in this browser');
-      return;
+      return false;
     }
     try {
       setError(null);
@@ -124,7 +134,6 @@ export function useAudioRecorder({
       };
 
       recorder.onerror = (e) => {
-        // eslint-disable-next-line no-console
         console.error('MediaRecorder error:', e);
       };
 
@@ -144,7 +153,7 @@ export function useAudioRecorder({
         try {
           if (chunksRef.current.length) {
             const blob = new Blob(chunksRef.current, { type: mimeRef.current });
-            const base64 = await blobToBase64(blob);
+            const base64 = skipBase64 ? '' : await blobToBase64(blob);
             result = {
               base64,
               mimeType: mimeRef.current,
@@ -191,12 +200,14 @@ export function useAudioRecorder({
           return next;
         });
       }, 1000);
+      return true;
     } catch (e) {
       setError((e as Error).message || 'Microphone permission denied');
       setIsRecording(false);
       stopStream();
+      return false;
     }
-  }, [maxSeconds]);
+  }, [maxSeconds, skipBase64]);
 
   const stop = useCallback((): Promise<RecordingResult | null> => {
     return new Promise((resolve) => {

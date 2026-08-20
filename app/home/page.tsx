@@ -12,14 +12,13 @@ import { EarlyWarnings } from '@/components/EarlyWarnings';
 import { StreakBadge } from '@/components/StreakBadge';
 import { useAuth } from '@/lib/auth-context';
 import {
-  computeStats,
   getRecentTherapySessions,
   getStreak,
-  type Stats,
   type TherapySession,
   type StreakData,
 } from '@/lib/ai';
-import { DAY_ABBR, fmtDate, todayPretty } from '@/lib/format';
+import { computeStats, type Stats } from '@/lib/graphMetrics';
+import { fmtChartLabels, fmtDate, todayPretty } from '@/lib/format';
 
 function modeColor(mode: string) {
   const c = MODE_COLOR[mode] ?? COLORS.blue;
@@ -33,6 +32,7 @@ function HomeInner() {
   const [sessions, setSessions] = useState<TherapySession[]>([]);
   const [lastSession, setLastSession] = useState<TherapySession | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
   // Phase 3 states
   const [streak, setStreak] = useState<StreakData | null>(null);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
@@ -54,17 +54,24 @@ function HomeInner() {
   const dateString = todayPretty();
 
   const loadStats = useCallback(async () => {
+    setLoadingStats(true);
+    setStatsError(null);
     try {
       const recent = await getRecentTherapySessions(30);
       setSessions(recent);
       setStats(computeStats(recent));
-      if (recent.length) setLastSession(recent[0]);
-
-      // Fetch persistent database streak
-      const s = await getStreak();
-      setStreak(s);
-    } catch {
+      setLastSession(recent[0] ?? null);
+    } catch (error) {
+      setSessions([]);
       setStats(null);
+      setLastSession(null);
+      setStatsError((error as Error).message || 'Could not load your saved check-ins.');
+    }
+
+    try {
+      setStreak(await getStreak());
+    } catch {
+      setStreak(null);
     } finally {
       setLoadingStats(false);
     }
@@ -74,17 +81,13 @@ function HomeInner() {
     loadStats();
   }, [loadStats]);
 
-  const dayLabels = stats?.last7Dates
-    ? stats.last7Dates.map((d) => DAY_ABBR[new Date(d).getDay()])
-    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  const tooltipLabels = stats?.last7Dates ? stats.last7Dates.map(fmtDate) : undefined;
-  const chartData = stats?.last7MoodScores?.length
-    ? stats.last7MoodScores
-    : [50, 50, 50, 50, 50, 50, 50];
-
-  const trendPct = stats?.trendPct ?? 0;
-  const trendUp = trendPct >= 0;
+  const tooltipLabels = stats?.last7Dates ? fmtChartLabels(stats.last7Dates) : undefined;
+  const rangeLabels = tooltipLabels?.length
+    ? [tooltipLabels[0], tooltipLabels[tooltipLabels.length - 1]]
+    : [];
+  const trendDelta = stats?.trendDelta ?? null;
+  const trendFlat = trendDelta === 0;
+  const trendUp = trendDelta !== null && trendDelta >= 0;
 
   return (
     <AppShell title="Dashboard" subtitle={dateString}>
@@ -456,7 +459,14 @@ function HomeInner() {
                   </span>
                 </div>
                 {/* Progress track */}
-                <div style={{ width: '100%', height: 7, borderRadius: 4, background: 'rgba(37,99,235,0.06)', overflow: 'hidden' }}>
+                <div
+                  role="progressbar"
+                  aria-label="Subscription minutes remaining"
+                  aria-valuemin={0}
+                  aria-valuemax={totalQuota}
+                  aria-valuenow={Math.max(0, Math.min(totalQuota, minutesRemaining))}
+                  style={{ width: '100%', height: 7, borderRadius: 4, background: 'rgba(37,99,235,0.06)', overflow: 'hidden' }}
+                >
                   <div
                     style={{
                       width: `${progressPct}%`,
@@ -505,32 +515,48 @@ function HomeInner() {
         <Card style={{ marginBottom: 0 }}>
           <ChartHeader
             title="Mood Trend"
-            subtitle={stats ? `Last ${stats.last7MoodScores.length} check-ins` : 'Last 7 days'}
+            subtitle={stats ? `Last ${stats.last7MoodScores.length} saved check-ins` : 'Saved check-ins'}
             badge={
-              loadingStats ? null : stats ? (
+              loadingStats || trendDelta === null ? null : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Icon
-                    name={trendUp ? 'trending-up' : 'trending-down'}
-                    size={15}
-                    color={trendUp ? COLORS.blue : COLORS.danger}
-                  />
+                  {trendFlat ? (
+                    <span style={{ color: COLORS.textMuted, fontWeight: 800 }}>–</span>
+                  ) : (
+                    <Icon
+                      name={trendUp ? 'trending-up' : 'trending-down'}
+                      size={15}
+                      color={trendUp ? COLORS.success : COLORS.danger}
+                    />
+                  )}
                   <span
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: trendUp ? COLORS.blue : COLORS.danger,
+                      color: trendFlat ? COLORS.textMuted : trendUp ? COLORS.success : COLORS.danger,
                     }}
                   >
-                    {trendUp ? '+' : ''}
-                    {trendPct}%
+                    {!trendFlat && trendUp ? '+' : ''}
+                    {trendDelta} pts
                   </span>
                 </div>
-              ) : null
+              )
             }
           />
 
-          <MiniChart data={chartData} color={COLORS.blue} height={88} labels={tooltipLabels} />
-          <DayLabels labels={dayLabels} />
+          {stats && stats.last7MoodScores.length >= 2 ? (
+            <>
+              <MiniChart
+                data={stats.last7MoodScores}
+                color={COLORS.blue}
+                height={96}
+                labels={tooltipLabels}
+                ariaLabel="Mood across recent saved check-ins"
+              />
+              <DayLabels labels={rangeLabels} />
+            </>
+          ) : stats ? (
+            <NeedsMoreData metric="mood" value={stats.last7MoodScores[0]} />
+          ) : null}
 
           {stats && (
             <div
@@ -542,7 +568,7 @@ function HomeInner() {
                 borderTop: `1px solid ${COLORS.cardBorder}`,
               }}
             >
-              <StatItem value={stats.weeklyAvg} label="Avg Mood" />
+              <StatItem value={stats.recentAvg} label="Recent Avg" />
               <div style={{ width: 1, background: COLORS.cardBorder }} />
               <StatItem value={streak ? streak.current_streak : stats.streak} label="Day Streak" />
               <div style={{ width: 1, background: COLORS.cardBorder }} />
@@ -550,7 +576,7 @@ function HomeInner() {
             </div>
           )}
 
-          {!stats && !loadingStats && (
+          {!stats && !loadingStats && !statsError && (
             <div
               style={{
                 fontSize: 12,
@@ -560,6 +586,23 @@ function HomeInner() {
               }}
             >
               Complete your first check-in to see trends.
+            </div>
+          )}
+
+          {!loadingStats && statsError && (
+            <div
+              role="alert"
+              style={{
+                fontSize: 12,
+                color: COLORS.danger,
+                textAlign: 'center',
+                marginTop: 8,
+              }}
+            >
+              Your saved check-ins could not be loaded.{' '}
+              <button onClick={loadStats} style={{ color: COLORS.blue, fontWeight: 700 }}>
+                Try again
+              </button>
             </div>
           )}
 
@@ -598,13 +641,20 @@ function HomeInner() {
                 </span>
               }
             />
-            <MiniChart
-              data={stats.last7EnergyScores}
-              color={COLORS.blue}
-              height={88}
-              labels={tooltipLabels}
-            />
-            <DayLabels labels={dayLabels} />
+            {stats.last7EnergyScores.length >= 2 ? (
+              <>
+                <MiniChart
+                  data={stats.last7EnergyScores}
+                  color={COLORS.blue}
+                  height={96}
+                  labels={tooltipLabels}
+                  ariaLabel="Energy across recent saved check-ins"
+                />
+                <DayLabels labels={rangeLabels} />
+              </>
+            ) : (
+              <NeedsMoreData metric="energy" value={stats.last7EnergyScores[0]} />
+            )}
           </Card>
         ) : <div />}
 
@@ -619,13 +669,20 @@ function HomeInner() {
                 </span>
               }
             />
-            <MiniChart
-              data={stats.last7StressScores}
-              color={COLORS.danger}
-              height={88}
-              labels={tooltipLabels}
-            />
-            <DayLabels labels={dayLabels} />
+            {stats.last7StressScores.length >= 2 ? (
+              <>
+                <MiniChart
+                  data={stats.last7StressScores}
+                  color={COLORS.danger}
+                  height={96}
+                  labels={tooltipLabels}
+                  ariaLabel="Stress across recent saved check-ins"
+                />
+                <DayLabels labels={rangeLabels} />
+              </>
+            ) : (
+              <NeedsMoreData metric="stress" value={stats.last7StressScores[0]} />
+            )}
           </Card>
         ) : <div />}
 
@@ -751,6 +808,28 @@ function DayLabels({ labels }: { labels: string[] }) {
           {d}
         </span>
       ))}
+    </div>
+  );
+}
+
+function NeedsMoreData({ metric, value }: { metric: string; value: number }) {
+  return (
+    <div
+      role="status"
+      style={{
+        minHeight: 96,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        color: COLORS.textSecondary,
+        fontSize: 12,
+        textAlign: 'center',
+      }}
+    >
+      <strong style={{ color: COLORS.textPrimary }}>{value} / 100</strong>
+      One saved {metric} score. Complete another Reflect to reveal a trend.
     </div>
   );
 }

@@ -48,8 +48,9 @@ export function WaveformPlayer({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const W = canvas.width;
-      const H = canvas.height;
+      const dpr = window.devicePixelRatio || 1;
+      const W = canvas.width / dpr;
+      const H = canvas.height / dpr;
       ctx.clearRect(0, 0, W, H);
 
       const midY = H / 2;
@@ -179,6 +180,18 @@ export function WaveformPlayer({
     }
   }, [playing, audioEl]);
 
+  const seekTo = useCallback(
+    (seconds: number) => {
+      const el = audioEl.current;
+      if (!el || !duration) return;
+      const next = Math.max(0, Math.min(duration, seconds));
+      el.currentTime = next;
+      setCurrentTime(next);
+      draw(next / duration);
+    },
+    [audioEl, duration, draw]
+  );
+
   // ── Click-to-seek ──────────────────────────────────────────────────────────
   const handleCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -187,11 +200,9 @@ export function WaveformPlayer({
       if (!canvas || !el || !duration) return;
       const rect = canvas.getBoundingClientRect();
       const xFrac = (e.clientX - rect.left) / rect.width;
-      el.currentTime = xFrac * duration;
-      setCurrentTime(el.currentTime);
-      draw(xFrac);
+      seekTo(xFrac * duration);
     },
-    [audioEl, duration, draw]
+    [audioEl, duration, seekTo]
   );
 
   // ── Hover to show segment tooltip ─────────────────────────────────────────
@@ -206,6 +217,9 @@ export function WaveformPlayer({
     },
     [duration, segments]
   );
+
+  const visibleSegment =
+    hoveredSeg ?? segments.find((segment) => currentTime >= segment.t_start && currentTime < segment.t_end) ?? null;
 
   return (
     <div
@@ -239,20 +253,20 @@ export function WaveformPlayer({
           </div>
         </div>
         {/* Segment tooltip */}
-        {hoveredSeg && (
+        {visibleSegment && (
           <div
             style={{
               fontSize: 11,
-              color: hoveredSeg.color,
+              color: visibleSegment.color,
               fontWeight: 700,
-              background: `${hoveredSeg.color}18`,
-              border: `1px solid ${hoveredSeg.color}40`,
+              background: `${visibleSegment.color}18`,
+              border: `1px solid ${visibleSegment.color}40`,
               borderRadius: 8,
               padding: '4px 10px',
               textTransform: 'capitalize',
             }}
           >
-            {hoveredSeg.label} · {hoveredSeg.energy}% energy
+            {visibleSegment.label} · {visibleSegment.energy} / 100 energy
           </div>
         )}
       </div>
@@ -260,9 +274,31 @@ export function WaveformPlayer({
       {/* Canvas */}
       <canvas
         ref={canvasRef}
+        role="slider"
+        tabIndex={0}
+        aria-label="Audio position. Use left and right arrow keys to seek by 5 seconds."
+        aria-valuemin={0}
+        aria-valuemax={Math.max(0, Math.round(duration))}
+        aria-valuenow={Math.max(0, Math.round(currentTime))}
+        aria-valuetext={`${formatTime(currentTime)} of ${formatTime(duration)}`}
         onClick={handleCanvasClick}
         onMouseMove={handleCanvasMove}
         onMouseLeave={() => setHoveredSeg(null)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            seekTo(currentTime - 5);
+          } else if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            seekTo(currentTime + 5);
+          } else if (event.key === 'Home') {
+            event.preventDefault();
+            seekTo(0);
+          } else if (event.key === 'End') {
+            event.preventDefault();
+            seekTo(duration);
+          }
+        }}
         style={{
           width: '100%',
           height: 80,
@@ -275,6 +311,8 @@ export function WaveformPlayer({
       {/* Controls row */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 12 }}>
         <button
+          type="button"
+          aria-label={playing ? 'Pause recording playback' : 'Play recording'}
           onClick={togglePlay}
           style={{
             width: 36, height: 36,
@@ -303,7 +341,7 @@ export function WaveformPlayer({
               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
               const frac = (e.clientX - rect.left) / rect.width;
               const el = audioEl.current;
-              if (el && duration) { el.currentTime = frac * duration; setCurrentTime(el.currentTime); draw(frac); }
+              if (el && duration) seekTo(frac * duration);
             }}
             style={{
               height: 4, borderRadius: 2,

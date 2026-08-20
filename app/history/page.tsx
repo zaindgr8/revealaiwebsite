@@ -7,7 +7,7 @@ import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import {
-  deleteAllTherapySessions,
+  deleteAllHistorySessions,
   deleteHistoryItem,
   getHistoryFeed,
   getMoodTrend,
@@ -16,7 +16,7 @@ import {
   type MoodPoint,
 } from '@/lib/ai';
 import { MiniChart } from '@/components/MiniChart';
-import { fmtFullDate, fmtTime } from '@/lib/format';
+import { fmtChartLabels, fmtFullDate, fmtTime } from '@/lib/format';
 
 /**
  * What each row actually is, in the user's terms rather than the schema's.
@@ -28,6 +28,7 @@ import { fmtFullDate, fmtTime } from '@/lib/format';
 const KIND_LABEL: Record<HistoryItem['kind'], string> = {
   checkin: 'Voice check-in',
   chat: 'Chat',
+  live: 'Live call',
   intent: 'Recorded conversation',
 };
 
@@ -35,6 +36,8 @@ function HistoryInner() {
   const router = useRouter();
   const [sessions, setSessions] = useState<HistoryItem[]>([]);
   const [trend, setTrend] = useState<MoodPoint[]>([]);
+  const [trendError, setTrendError] = useState(false);
+  const [feedError, setFeedError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -46,6 +49,7 @@ function HistoryInner() {
     let cancelled = false;
     (async () => {
       try {
+        let moodChartFailed = false;
         // In parallel, and the chart is allowed to fail on its own. The feed is
         // the screen; a chart that cannot load should not take the list of
         // sessions down with it.
@@ -53,15 +57,20 @@ function HistoryInner() {
           getHistoryFeed(),
           getMoodTrend().catch((e) => {
             console.error('[history] mood trend unavailable:', (e as Error).message);
+            moodChartFailed = true;
             return [] as MoodPoint[];
           }),
         ]);
         if (cancelled) return;
         setSessions(items);
         setTrend(points);
+        setTrendError(moodChartFailed);
         setHasMore(items.length === HISTORY_PAGE_SIZE);
       } catch {
-        if (!cancelled) setSessions([]);
+        if (!cancelled) {
+          setSessions([]);
+          setFeedError(true);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -114,13 +123,13 @@ function HistoryInner() {
     if (!sessions.length) return;
     if (
       !confirm(
-        `This will permanently delete all ${sessions.length} sessions from your history. This cannot be undone.`
+        'This will permanently delete every check-in, chat, and recorded conversation in your history. This cannot be undone.'
       )
     )
       return;
     setLoading(true);
     try {
-      await deleteAllTherapySessions();
+      await deleteAllHistorySessions();
       setSessions([]);
       setTrend([]);
     } catch (e) {
@@ -133,7 +142,7 @@ function HistoryInner() {
   return (
     <AppShell
       title="Session History"
-      subtitle={sessions.length ? `${sessions.length} sessions` : 'Your past check-ins'}
+      subtitle={sessions.length ? `${sessions.length}${hasMore ? '+' : ''} sessions loaded` : 'Your past check-ins'}
     >
       <div
         style={{
@@ -183,6 +192,20 @@ function HistoryInner() {
             }}
           />
         </div>
+      ) : feedError ? (
+        <div
+          role="alert"
+          style={{
+            padding: '28px 20px',
+            color: COLORS.danger,
+            background: COLORS.card,
+            border: `1px solid ${COLORS.cardBorder}`,
+            borderRadius: 18,
+            textAlign: 'center',
+          }}
+        >
+          Your session history could not be loaded. Refresh the page to try again.
+        </div>
       ) : sessions.length === 0 ? (
         <div
           style={{
@@ -214,6 +237,23 @@ function HistoryInner() {
         </div>
       ) : (
         <>
+        {trendError && (
+          <div
+            role="alert"
+            style={{
+              background: COLORS.card,
+              border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 14,
+              color: COLORS.danger,
+              fontSize: 12,
+            }}
+          >
+            Your sessions loaded, but the mood chart did not. Refresh to try again.
+          </div>
+        )}
+
         {/* T-6: renders for any user with 2 or more scored check-ins. */}
         {trend.length >= 2 && (
           <div
@@ -246,15 +286,36 @@ function HistoryInner() {
                 mean either "felt worse" or "typed instead of recording".
               */}
               <div style={{ fontSize: 11, color: COLORS.textMuted }}>
-                {trend.length} voice check-in{trend.length === 1 ? '' : 's'}
+                {fmtFullDate(trend[0].created_at)} to {fmtFullDate(trend[trend.length - 1].created_at)}
+                {' · '}{trend.length} voice check-in{trend.length === 1 ? '' : 's'}
               </div>
             </div>
             <MiniChart
               data={trend.map((s) => s.mood_score)}
               color={COLORS.blue}
-              height={110}
-              labels={trend.map((s) => fmtFullDate(s.created_at))}
+              height={120}
+              labels={fmtChartLabels(trend.map((s) => s.created_at))}
+              ariaLabel="Mood over saved voice check-ins"
             />
+          </div>
+        )}
+
+        {!trendError && trend.length === 1 && (
+          <div
+            role="status"
+            style={{
+              background: COLORS.card,
+              border: `1px solid ${COLORS.cardBorder}`,
+              borderRadius: 18,
+              padding: 18,
+              marginBottom: 14,
+              color: COLORS.textSecondary,
+              fontSize: 12,
+              textAlign: 'center',
+            }}
+          >
+            One saved mood score: <strong>{trend[0].mood_score} / 100</strong>. Complete another
+            Reflect to reveal a trend.
           </div>
         )}
 

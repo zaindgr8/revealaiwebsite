@@ -29,6 +29,7 @@ import {
   endCoachSession,
   flagSessionCrisis,
   getRecentTherapySessions,
+  retrySaveAnalysis,
   saveChatMessage,
   updateStreak,
   type AnalysisResult,
@@ -36,8 +37,7 @@ import {
   type StreakData,
   type UserContext,
 } from '@/lib/ai';
-import { speakDespina, stopDespina } from '@/lib/despinaVoice';
-import LiveVoiceChat from '@/components/LiveVoiceChat';
+import { speakElena, stopElena } from '@/lib/elenaVoice';
 import { deductSessionMinutes } from '@/lib/subscription';
 
 const PACE_LABEL: Record<string, string> = { Slow: 'Slow', Normal: 'Normal', Fast: 'Fast' };
@@ -58,6 +58,12 @@ function labelForMood(score: number) {
   if (score >= 50) return 'Okay';
   if (score >= 35) return 'Slightly Low';
   return 'Low';
+}
+
+function colorForWellbeingScore(score: number) {
+  if (score >= 70) return COLORS.success;
+  if (score >= 45) return COLORS.warning;
+  return COLORS.danger;
 }
 
 const SESSION_STORAGE_KEY = 'reveal_last_session';
@@ -108,6 +114,8 @@ function TherapyInner() {
   const [phase, setPhase] = useState<Phase>(saved ? 'results' : 'record');
   const [results, setResults] = useState<AnalysisResult | null>(saved?.results ?? null);
   const [analyzeErr, setAnalyzeErr] = useState<string | null>(null);
+  const [isRetryingSave, setIsRetryingSave] = useState(false);
+  const [saveRetryError, setSaveRetryError] = useState<string | null>(null);
   const [previousSession, setPreviousSession] = useState<TherapySession | null>(null);
   const recentSessionsRef = useRef<TherapySession[]>([]);
   // Phase 2: audio playback state (blob URL cannot be restored after navigation)
@@ -153,7 +161,7 @@ function TherapyInner() {
   // Clean up speech synthesis on unmount
   useEffect(() => {
     return () => {
-      stopDespina();
+      stopElena();
       if (recognitionRef.current) {
         try { recognitionRef.current.stop(); } catch {}
       }
@@ -162,11 +170,11 @@ function TherapyInner() {
 
   const playMessageVoice = (id: string, text: string) => {
     if (isSpeakingId === id) {
-      stopDespina();
+      stopElena();
       setIsSpeakingId(null);
     } else {
       setIsSpeakingId(id);
-      speakDespina(text, () => setIsSpeakingId(null));
+      speakElena(text, () => setIsSpeakingId(null));
     }
   };
 
@@ -186,7 +194,7 @@ function TherapyInner() {
     setConversationMessages(updatedMessages);
     setChatInputText('');
     setIsTherapistThinking(true);
-    stopDespina();
+    stopElena();
     setIsSpeakingId(null);
 
     const sessionId = coachSessionIdRef.current;
@@ -305,7 +313,7 @@ function TherapyInner() {
   const handleFinishDeepConversation = async (explicitMessages?: ConversationMessage[]) => {
     if (!savedAudio || isSubmittingDeep) return;
     setIsSubmittingDeep(true);
-    stopDespina();
+    stopElena();
     setIsSpeakingId(null);
 
     const msgsToUse = explicitMessages || conversationMessages;
@@ -382,10 +390,12 @@ function TherapyInner() {
       setPhase('results');
 
       let updatedStreak: StreakData | null = null;
-      try {
-        updatedStreak = await updateStreak();
-        setStreak(updatedStreak);
-      } catch {}
+      if (data.saved !== false) {
+        try {
+          updatedStreak = await updateStreak();
+          setStreak(updatedStreak);
+        } catch {}
+      }
 
       saveSession({
         results: data,
@@ -523,7 +533,7 @@ function TherapyInner() {
 
   // Reset to record — revoke blob and clear persisted session
   const handleNewRecording = () => {
-    stopDespina();
+    stopElena();
     if (blobUrlRef.current) {
       URL.revokeObjectURL(blobUrlRef.current);
       blobUrlRef.current = null;
@@ -532,6 +542,7 @@ function TherapyInner() {
     setWaveEnvelope([]);
     setSegmentEmotions([]);
     setResults(null);
+    setSaveRetryError(null);
     setDeepQuestion(null);
     setConversationMessages([]);
     setSavedAudio(null);
@@ -540,10 +551,89 @@ function TherapyInner() {
     setPhase('record');
   };
 
+  const handleRetrySave = async () => {
+    if (!results || isRetryingSave) return;
+    setIsRetryingSave(true);
+    setSaveRetryError(null);
+    try {
+      await retrySaveAnalysis(results);
+      const savedResult: AnalysisResult = { ...results, saved: true, save_error: undefined };
+      setResults(savedResult);
+
+      let updatedStreak = streak;
+      try {
+        updatedStreak = await updateStreak();
+        setStreak(updatedStreak);
+      } catch {}
+
+      saveSession({
+        results: savedResult,
+        waveEnvelope,
+        segmentEmotions,
+        audioDuration,
+        streak: updatedStreak,
+      });
+    } catch (error) {
+      setSaveRetryError((error as Error).message || 'Could not save this result.');
+    } finally {
+      setIsRetryingSave(false);
+    }
+  };
+
   if (phase === 'results' && results) {
     const moodLabel = labelForMood(results.mood_score);
+    const resultRecommendations = (results.recommendations ?? results.tips ?? []).filter(Boolean);
     return (
       <AppShell title="Analysis Results" subtitle="Your voice, decoded">
+        {results.saved === false && (
+          <div
+            role="alert"
+            style={{
+              background: 'rgba(217,119,6,0.08)',
+              border: '1px solid rgba(217,119,6,0.35)',
+              borderRadius: 16,
+              padding: '14px 16px',
+              marginBottom: 16,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ color: COLORS.warning, fontSize: 14, fontWeight: 800 }}>
+                This result is not in your history yet
+              </div>
+              <div style={{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 1.5, marginTop: 3 }}>
+                Your analysis is safe on this screen, but Dashboard, Journey, and History will not
+                include it until saving succeeds.
+              </div>
+              {saveRetryError && (
+                <div style={{ color: COLORS.danger, fontSize: 11, marginTop: 5 }}>
+                  {saveRetryError}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleRetrySave}
+              disabled={isRetryingSave}
+              style={{
+                borderRadius: 10,
+                padding: '9px 14px',
+                background: COLORS.warning,
+                color: COLORS.white,
+                fontSize: 12,
+                fontWeight: 800,
+                opacity: isRetryingSave ? 0.65 : 1,
+                cursor: isRetryingSave ? 'wait' : 'pointer',
+              }}
+            >
+              {isRetryingSave ? 'Saving…' : 'Retry saving'}
+            </button>
+          </div>
+        )}
         {/* -- Top-Up Banner — shown when minutes run out -- */}
         {showTopUpBanner && (
           <div
@@ -638,9 +728,10 @@ function TherapyInner() {
           if (previousMood === undefined || isNaN(previousMood)) return null;
 
           const moodDelta = currentMood - previousMood;
+          const trendFlat = moodDelta === 0;
           const trendUp = moodDelta >= 0;
-          const moodDeltaColor = trendUp ? COLORS.success : COLORS.danger;
-          const moodDeltaArrow = trendUp ? '▲' : '▼';
+          const moodDeltaColor = trendFlat ? COLORS.textMuted : trendUp ? COLORS.success : COLORS.danger;
+          const moodDeltaArrow = trendFlat ? '–' : trendUp ? '▲' : '▼';
           const moodDeltaText = moodDelta !== 0
             ? `Your mood is ${trendUp ? 'up' : 'down'} ${Math.abs(moodDelta)} points from your last check-in`
             : `Your mood is unchanged from your last check-in`;
@@ -651,8 +742,18 @@ function TherapyInner() {
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                background: trendUp ? 'rgba(22,163,74,0.06)' : 'rgba(239,68,68,0.06)',
-                border: `1px solid ${trendUp ? 'rgba(22,163,74,0.2)' : 'rgba(239,68,68,0.2)'}`,
+                background: trendFlat
+                  ? 'rgba(138,138,154,0.06)'
+                  : trendUp
+                    ? 'rgba(22,163,74,0.06)'
+                    : 'rgba(239,68,68,0.06)',
+                border: `1px solid ${
+                  trendFlat
+                    ? 'rgba(138,138,154,0.2)'
+                    : trendUp
+                      ? 'rgba(22,163,74,0.2)'
+                      : 'rgba(239,68,68,0.2)'
+                }`,
                 borderRadius: 14,
                 padding: '11px 15px',
                 marginBottom: 16,
@@ -741,20 +842,22 @@ function TherapyInner() {
               size={160}
               label="Mood Score"
               sublabel={moodLabel}
-              color={COLORS.green}
+              color={colorForWellbeingScore(results.mood_score)}
             />
-            {/* 7-day mood sparkline inline */}
+            {/* Saved check-in mood sparkline inline */}
             {(() => {
-              const prevScores = recentSessionsRef.current.slice(0, 6).reverse().map(s => s.mood_score);
-              const scores = [...prevScores, results.mood_score];
+              if (results.saved === false) return null;
+              const previous = recentSessionsRef.current.slice(0, 6).reverse();
+              const scores = [...previous.map((session) => session.mood_score), results.mood_score];
+              const dates = [...previous.map((session) => session.created_at), 'Current check-in'];
               if (scores.length < 2) return null;
 
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 14, width: '100%', borderTop: `1px solid ${COLORS.cardBorder}`, paddingTop: 12 }}>
                   <div style={{ fontSize: 10, color: COLORS.textMuted, marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
-                    7-Day Mood Trend
+                    {scores.length} Saved Check-ins · 0–100
                   </div>
-                  <MoodSparklineInline scores={scores} width={130} height={35} />
+                  <MoodSparklineInline scores={scores} dates={dates} width={130} height={35} />
                 </div>
               );
             })()}
@@ -838,14 +941,23 @@ function TherapyInner() {
                 <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 }}>Readiness Check</div>
                 <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)', letterSpacing: '-0.2px' }}>How ready does your voice say you are?</div>
               </div>
-              <div style={{
+              <div
+                role="progressbar"
+                aria-label="Readiness score"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.max(0, Math.min(100, results.readiness_score))}
+                style={{
                 width: 58, height: 58, borderRadius: '50%',
-                background: `conic-gradient(${results.readiness_score >= 70 ? COLORS.green : results.readiness_score >= 45 ? '#D97706' : COLORS.danger} ${results.readiness_score * 3.6}deg, rgba(17,17,24,0.08) 0deg)`,
+                background: `conic-gradient(${colorForWellbeingScore(results.readiness_score)} ${Math.max(0, Math.min(100, results.readiness_score)) * 3.6}deg, rgba(17,17,24,0.08) 0deg)`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               }}>
                 <div style={{ width: 44, height: 44, borderRadius: '50%', background: COLORS.card, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>{results.readiness_score}</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
+                    {Math.max(0, Math.min(100, results.readiness_score))}
+                    <span style={{ fontSize: 8, color: COLORS.textMuted }}> / 100</span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -858,29 +970,31 @@ function TherapyInner() {
         )}
 
         <Grid cols={2} gap={14}>
-          <Card style={{ marginBottom: 0 }}>
-            <CardTitle icon="checkmark">Recommendations</CardTitle>
-            {((results.recommendations ?? results.tips) ?? []).map((tip, i) => (
-              <div
-                key={i}
-                style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}
-              >
+          {resultRecommendations.length > 0 && (
+            <Card style={{ marginBottom: 0 }}>
+              <CardTitle icon="checkmark">Recommendations</CardTitle>
+              {resultRecommendations.map((tip, i) => (
                 <div
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: 3,
-                    background: COLORS.green,
-                    marginTop: 7,
-                    flexShrink: 0,
-                  }}
-                />
-                <div style={{ fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 1.55 }}>
-                  {tip}
+                  key={i}
+                  style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}
+                >
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: 3,
+                      background: COLORS.green,
+                      marginTop: 7,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ fontSize: 13, color: COLORS.textSecondary, flex: 1, lineHeight: 1.55 }}>
+                    {tip}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </Card>
+              ))}
+            </Card>
+          )}
 
           {(results.todays_action || results.daily_prompt) ? (
             <div

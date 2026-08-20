@@ -6,12 +6,13 @@ import {
   SCORING_RUBRIC,
   VOCAL_SUMMARY_VS_AI_INSIGHT_RULE,
   ANCHOR_RULE,
+  REFLECT_GEMINI_MODEL,
 } from '@/prompts/checkIn';
 
 export const maxDuration = 60;
 
 /** Recorded on every row as ai_model, so a stored analysis says what produced it. */
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = REFLECT_GEMINI_MODEL;
 
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -57,6 +58,35 @@ function normaliseMode(value: unknown): string {
       'therapy_sessions_detected_mode_check constraint together.'
   );
   return 'neutral';
+}
+
+/** Preserve real zeroes, reject non-numbers, and keep graph values on 0–100. */
+function normaliseScore(value: unknown, fallback = 50): number {
+  if (value === null || value === undefined || value === '') return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.round(Math.min(100, Math.max(0, parsed)));
+}
+
+function normaliseRecommendations(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => String(item).trim())
+    .filter(Boolean)
+    .slice(0, 3);
+}
+
+/**
+ * Reflect is available outside the US, so a model must not silently insert a
+ * US-only crisis number. The escalation UI has the client's verified regional
+ * resources; Reflect prose stays location-neutral when no user region was
+ * supplied to the model.
+ */
+function makeCrisisContactLocationSafe(value: string): string {
+  return value
+    .replace(/\b(?:call|dial|text)\s+(?:the\s+)?988\b/gi, 'contact your local crisis line or emergency services')
+    .replace(/\b988\s+(?:Suicide\s*&\s*Crisis\s+)?Lifeline\b/gi, 'your local crisis line or emergency services')
+    .replace(/\b(?:National\s+Suicide\s+Prevention|Suicide\s*&\s*Crisis)\s+Lifeline\b/gi, 'your local crisis line or emergency services');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -205,8 +235,13 @@ async function callGemini(
       // watching. If the prose becomes noticeably repetitive, split into two
       // calls — scores at 0, narrative at 0.6 — rather than reintroducing
       // variance into numbers users are shown as trends.
-      temperature: 0,
-      topP: 0.85,
+      // The settings the note above describes are gone, and the finding it
+      // records still stands. Gemini 3.x ignores temperature, topP and topK
+      // outright — no error, no warning — so the reproducibility this route
+      // depends on is no longer bought by a number. Re-measure the energy
+      // spread on gemini-3.7-flash. If it has come back, the fix is a
+      // stricter schema and a prompt that pins the scoring rules, not a
+      // parameter the model discards.
       responseMimeType: 'application/json',
     },
   };
@@ -311,15 +346,16 @@ export async function POST(req: NextRequest) {
     );
     const vocalSummary = String(analysis.vocal_summary || analysis.emotional_mirror || '');
     const transcriptSummary = String(analysis.transcript_summary || '');
-    const recommendations = Array.isArray(analysis.recommendations)
-      ? analysis.recommendations
-      : Array.isArray(analysis.tips)
-      ? analysis.tips
-      : [];
-    const todaysAction = analysis.todays_action
+    const recommendations = normaliseRecommendations(
+      analysis.recommendations ?? analysis.tips
+    ).map(makeCrisisContactLocationSafe);
+    const rawTodaysAction = analysis.todays_action
       ? String(analysis.todays_action)
       : analysis.daily_prompt
       ? String(analysis.daily_prompt)
+      : null;
+    const todaysAction = rawTodaysAction
+      ? makeCrisisContactLocationSafe(rawTodaysAction)
       : null;
 
     // New deep-analysis fields
@@ -348,11 +384,11 @@ export async function POST(req: NextRequest) {
 
     const sessionData = {
       user_id: user.id,
-      mood_score: Number(analysis.mood_score) || 50,
-      energy: Number(analysis.energy_level ?? analysis.energy) || 50,
-      stress: Number(analysis.stress_level ?? analysis.stress) || 50,
-      positivity: Number(analysis.positivity) || 50,
-      confidence: Number(analysis.confidence) || 50,
+      mood_score: normaliseScore(analysis.mood_score),
+      energy: normaliseScore(analysis.energy_level ?? analysis.energy),
+      stress: normaliseScore(analysis.stress_level ?? analysis.stress),
+      positivity: normaliseScore(analysis.positivity),
+      confidence: normaliseScore(analysis.confidence),
       // Capitalised deliberately. therapy_sessions has a CHECK constraint that
       // only accepts 'Slow' | 'Normal' | 'Fast', and every insert here was
       // writing lowercase 'normal' — which failed with 23514 on every single
