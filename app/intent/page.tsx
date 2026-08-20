@@ -187,7 +187,7 @@ function IntentInner() {
 
         {step === 'ready' && session && (
           <>
-            <StepHeading n={3} of={3} title="Upload the conversation" />
+            <StepHeading n={3} of={3} title="Record the conversation" />
             <ConversationUpload
               session={session}
               onUploaded={(updated) => setSession(updated)}

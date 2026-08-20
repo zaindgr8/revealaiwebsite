@@ -111,7 +111,10 @@ export class AudioSplitError extends Error {}
  * main-thread work, and a frozen page with no feedback reads as a crash.
  */
 export async function splitConversation(
-  file: File,
+  // Blob, not File. Nothing here reads a name or a type — only .arrayBuffer() —
+  // and the in-app recorder produces a Blob. File extends Blob, so every
+  // existing caller is unaffected.
+  file: Blob,
   {
     chunkSeconds = SPLIT_SECONDS,
     onProgress,
