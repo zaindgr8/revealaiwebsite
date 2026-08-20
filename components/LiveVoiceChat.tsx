@@ -8,6 +8,22 @@ import { ELENA_LIVE_PERSONA } from '@/prompts/elena';
 import { DEFAULT_VOICE, VOICES, resolveVoice } from '@/lib/voices';
 import { GEMINI_LIVE_MODEL } from '@/lib/geminiModel';
 
+/*
+  Tints of the brand palette.
+
+  lib/theme.ts holds solid brand values only, and this card needs the same
+  values at low opacity for glows, soft fills and shadows. They live here as
+  named constants so no raw slate or purple returns to the file.
+*/
+const INK_SHADOW = 'rgba(17, 17, 24, 0.08)';
+const INK_SHADOW_SOFT = 'rgba(17, 17, 24, 0.06)';
+const BLUE_SOFT = 'rgba(37, 99, 235, 0.10)';
+const BLUE_GLOW = 'rgba(37, 99, 235, 0.25)';
+const SKY_GLOW = 'rgba(14, 165, 233, 0.35)';
+const DANGER_SOFT = 'rgba(239, 68, 68, 0.08)';
+const MUTED_BAR_TOP = 'rgba(138, 138, 154, 0.45)';
+const MUTED_BAR_BOTTOM = 'rgba(138, 138, 154, 0.18)';
+
 export type LiveTranscriptTurn = {
   id: string;
   role: 'user' | 'assistant';
@@ -844,8 +860,8 @@ export default function LiveVoiceChat({
           gradient.addColorStop(0, COLORS.blue);
           gradient.addColorStop(1, COLORS.gradientEnd);
         } else {
-          gradient.addColorStop(0, 'rgba(148, 163, 184, 0.3)');
-          gradient.addColorStop(1, 'rgba(148, 163, 184, 0.1)');
+          gradient.addColorStop(0, MUTED_BAR_TOP);
+          gradient.addColorStop(1, MUTED_BAR_BOTTOM);
         }
 
         ctx.fillStyle = gradient;
@@ -876,12 +892,18 @@ export default function LiveVoiceChat({
   return (
     <div
       style={{
-        background: 'linear-gradient(145deg, rgba(15, 23, 42, 0.85), rgba(30, 41, 59, 0.95))',
+        /*
+          A white brand card, like every other Card in the product.
+
+          It was a dark slate panel while the text colours stayed on the light
+          theme: ink headings on a near-black surface, which no one could read.
+          The palette has one surface set, so this card uses it.
+        */
+        background: COLORS.card,
         border: `1px solid ${COLORS.cardBorder}`,
         borderRadius: 24,
         padding: 32,
-        backdropFilter: 'blur(16px)',
-        boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+        boxShadow: `0 20px 40px ${INK_SHADOW_SOFT}`,
         color: COLORS.textPrimary,
         display: 'flex',
         flexDirection: 'column',
@@ -908,7 +930,9 @@ export default function LiveVoiceChat({
             : isConnected
             ? `radial-gradient(circle, ${COLORS.gradientStart} 0%, transparent 70%)`
             : 'transparent',
-          opacity: isSpeaking ? 0.35 : isConnected ? 0.15 : 0,
+          // Lower than before, because the glow now sits on white and not on
+          // near-black. The old values washed the heading out.
+          opacity: isSpeaking ? 0.18 : isConnected ? 0.08 : 0,
           transition: 'all 0.5s ease',
           pointerEvents: 'none',
         }}
@@ -920,8 +944,8 @@ export default function LiveVoiceChat({
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          background: 'rgba(255, 255, 255, 0.06)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: COLORS.surface,
+          border: `1px solid ${COLORS.cardBorder}`,
           borderRadius: 20,
           padding: '6px 14px',
           fontSize: 12,
@@ -937,8 +961,17 @@ export default function LiveVoiceChat({
             width: 8,
             height: 8,
             borderRadius: '50%',
-            background: isConnected ? COLORS.green : isConnecting ? COLORS.sky : COLORS.danger,
-            boxShadow: isConnected ? `0 0 10px ${COLORS.green}` : 'none',
+            /*
+              Idle was red, which reads as a fault. "Ready for live call" is
+              not a fault, and the guidelines keep red for errors and for
+              destructive actions. Idle is now the muted label grey.
+            */
+            background: isConnected
+              ? COLORS.success
+              : isConnecting
+              ? COLORS.sky
+              : COLORS.textMuted,
+            boxShadow: isConnected ? `0 0 10px ${COLORS.success}` : 'none',
             display: 'inline-block',
           }}
         />
@@ -967,11 +1000,13 @@ export default function LiveVoiceChat({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
+            // The outer glow used to end in purple, which is in no part of the
+            // palette. Blue to sky is the brand gradient, so the glow follows it.
             boxShadow: isSpeaking
-              ? `0 0 40px ${COLORS.sky}, 0 0 80px rgba(168, 85, 247, 0.4)`
+              ? `0 0 40px ${SKY_GLOW}, 0 0 80px ${BLUE_GLOW}`
               : isConnected
-              ? `0 0 24px rgba(37, 99, 235, 0.4)`
-              : '0 8px 24px rgba(0, 0, 0, 0.3)',
+              ? `0 0 24px ${BLUE_GLOW}`
+              : `0 8px 24px ${INK_SHADOW}`,
             transition: 'all 0.3s ease',
             transform: isSpeaking ? 'scale(1.06)' : 'scale(1)',
           }}
@@ -981,14 +1016,18 @@ export default function LiveVoiceChat({
               width: 98,
               height: 98,
               borderRadius: '50%',
-              background: COLORS.card,
+              // Off-white, not white: a white disc on a white card would erase
+              // the ring into a floating blue outline.
+              background: COLORS.surface,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <span style={{ fontSize: 36 }}>🎙️</span>
+            {/* The emoji rendered grey on every platform and could not take a
+                brand colour. The icon can. */}
+            <Icon name="mic" size={38} color={COLORS.blue} />
           </div>
         </div>
 
@@ -1018,12 +1057,12 @@ export default function LiveVoiceChat({
       {errorMsg && (
         <div
           style={{
-            background: 'rgba(239, 68, 68, 0.15)',
+            background: DANGER_SOFT,
             border: `1px solid ${COLORS.danger}`,
             borderRadius: 12,
             padding: '10px 16px',
             fontSize: 13,
-            color: '#fca5a5',
+            color: COLORS.danger,
             marginBottom: 20,
             textAlign: 'center',
             width: '100%',
@@ -1052,7 +1091,7 @@ export default function LiveVoiceChat({
               fontWeight: 800,
               fontFamily: 'var(--font-syne)',
               cursor: isConnecting || disabledReason ? 'not-allowed' : 'pointer',
-              boxShadow: '0 8px 24px rgba(37, 99, 235, 0.4)',
+              boxShadow: `0 8px 24px ${BLUE_GLOW}`,
               transition: 'all 0.2s ease',
               display: 'flex',
               alignItems: 'center',
@@ -1060,7 +1099,8 @@ export default function LiveVoiceChat({
               opacity: isConnecting || disabledReason ? 0.55 : 1,
             }}
           >
-            <span>{isConnecting ? '⏳ Connecting...' : '📞 Start Live Call'}</span>
+            <Icon name={isConnecting ? 'time' : 'phone'} size={17} color={COLORS.white} />
+            <span>{isConnecting ? 'Connecting...' : 'Start Live Call'}</span>
           </button>
         ) : (
           <>
@@ -1073,8 +1113,8 @@ export default function LiveVoiceChat({
                 width: 48,
                 height: 48,
                 borderRadius: '50%',
-                background: isMuted ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-                border: `1px solid ${isMuted ? COLORS.danger : 'rgba(255, 255, 255, 0.15)'}`,
+                background: isMuted ? DANGER_SOFT : COLORS.surface,
+                border: `1px solid ${isMuted ? COLORS.danger : COLORS.cardBorder}`,
                 color: isMuted ? COLORS.danger : COLORS.textPrimary,
                 cursor: 'pointer',
                 display: 'flex',
@@ -1093,7 +1133,9 @@ export default function LiveVoiceChat({
               onClick={() => finishConversation('user')}
               aria-label="End live call"
               style={{
-                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                // One flat brand red. The old gradient ended on a shade the
+                // palette does not define.
+                background: COLORS.danger,
                 color: COLORS.white,
                 border: 'none',
                 borderRadius: 30,
@@ -1102,13 +1144,14 @@ export default function LiveVoiceChat({
                 fontWeight: 800,
                 fontFamily: 'var(--font-syne)',
                 cursor: 'pointer',
-                boxShadow: '0 8px 20px rgba(239, 68, 68, 0.4)',
+                boxShadow: `0 8px 20px ${INK_SHADOW}`,
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
               }}
             >
-              <span>🛑 End Call</span>
+              <Icon name="stop" size={16} color={COLORS.white} />
+              <span>End Call</span>
             </button>
 
             {/* Toggle Transcript */}
@@ -1120,8 +1163,8 @@ export default function LiveVoiceChat({
                 width: 48,
                 height: 48,
                 borderRadius: '50%',
-                background: showTranscript ? 'rgba(37, 99, 235, 0.2)' : 'rgba(255, 255, 255, 0.08)',
-                border: `1px solid ${showTranscript ? COLORS.blue : 'rgba(255, 255, 255, 0.15)'}`,
+                background: showTranscript ? BLUE_SOFT : COLORS.surface,
+                border: `1px solid ${showTranscript ? COLORS.blue : COLORS.cardBorder}`,
                 color: showTranscript ? COLORS.blue : COLORS.textPrimary,
                 cursor: 'pointer',
                 display: 'flex',
@@ -1160,10 +1203,10 @@ export default function LiveVoiceChat({
             width: '100%',
             maxHeight: 180,
             overflowY: 'auto',
-            background: 'rgba(0, 0, 0, 0.3)',
+            background: COLORS.surface,
             borderRadius: 14,
             padding: 14,
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            border: `1px solid ${COLORS.cardBorder}`,
             display: 'flex',
             flexDirection: 'column',
             gap: 10,

@@ -58,6 +58,32 @@ function SettingsInner() {
     setNameInput(fallbackName);
   }, [profile, user]);
 
+  /*
+    Scroll to the card a fragment names, for example /settings#elena-voice
+    from the Live Call page.
+
+    The browser does this itself, but it does it before this client page has
+    rendered, so the element does not exist yet and nothing moves. One frame
+    later it does. AuthGuard can delay the render further, so the lookup
+    repeats for a short time and then gives up.
+  */
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) return;
+    let attempts = 0;
+    const timer = window.setInterval(() => {
+      const target = document.getElementById(id);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        window.clearInterval(timer);
+        return;
+      }
+      attempts += 1;
+      if (attempts > 20) window.clearInterval(timer);
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const displayName =
     profile?.full_name ||
     (user?.user_metadata?.full_name as string | undefined) ||
@@ -541,7 +567,7 @@ function SettingsInner() {
         to tell speakers apart in a recording. This one is the therapist's
         voice. Same word, opposite meaning.
       */}
-      <Card style={{ marginTop: 14 }}>
+      <Card id="elena-voice" style={{ marginTop: 14 }}>
         <SectionTitle>Elena&apos;s Voice</SectionTitle>
         <TherapistVoicePicker />
         <p

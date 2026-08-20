@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
@@ -9,7 +10,7 @@ import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import LiveVoiceChat, { type LiveTranscriptTurn } from '@/components/LiveVoiceChat';
 import { deductSessionMinutes } from '@/lib/subscription';
 import { useAuth } from '@/lib/auth-context';
-import { resolveVoice } from '@/lib/voices';
+import { VOICES, resolveVoice } from '@/lib/voices';
 import { supabase } from '@/lib/supabase';
 import {
   createCoachSession,
@@ -240,6 +241,12 @@ function LiveInner() {
 
   const loading = instruction === null;
 
+  // The voice Elena will speak with on this call, named on screen so the user
+  // recognises it before the call rather than during it. resolveVoice already
+  // guarantees the id is one of VOICES, so the tone lookup always matches.
+  const voiceId = resolveVoice(profile?.therapist_voice);
+  const voiceTone = VOICES.find((v) => v.id === voiceId)?.tone;
+
   return (
     <AppShell title="Live Call" subtitle="Talk with Elena in real time">
       <div style={{ maxWidth: 560, margin: '0 auto', width: '100%' }}>
@@ -268,9 +275,48 @@ function LiveInner() {
           }}
         >
           Press start, allow the microphone, then just talk. Elena answers out loud and
-          you can cut in at any time. Minutes come off your plan while the call runs. You
-          can change how she sounds in Settings.
+          you can cut in at any time. Minutes come off your plan while the call runs.
         </div>
+
+        {/*
+          The voice, named and changeable from here.
+
+          The paragraph above used to end with "You can change how she sounds in
+          Settings", which is a direction, not a control: it named neither the
+          current voice nor a way to reach the setting. A user who dislikes the
+          voice finds that out on this page, so the way out belongs on this page
+          too. The link carries a fragment so Settings opens on that card.
+
+          Shown while a call runs as well. A change saved mid-call applies to the
+          next one, which is what the Settings card says, so the line stays
+          honest either way.
+        */}
+        {!crisis && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexWrap: 'wrap',
+              gap: 8,
+              marginBottom: 16,
+              fontSize: 12.5,
+              color: COLORS.textMuted,
+            }}
+          >
+            <Icon name="mic" size={14} color={COLORS.textMuted} />
+            <span>
+              Elena&apos;s voice: <strong style={{ color: COLORS.textSecondary }}>{voiceId}</strong>
+              {voiceTone ? ` — ${voiceTone.toLowerCase()}` : ''}
+            </span>
+            <Link
+              href="/settings#elena-voice"
+              style={{ color: COLORS.blue, textDecoration: 'underline' }}
+            >
+              Change
+            </Link>
+          </div>
+        )}
 
         {!crisis && !loading && (
           <label
@@ -328,7 +374,7 @@ function LiveInner() {
             onSessionComplete={handleSessionComplete}
             onSessionStart={handleSessionStart}
             onTranscriptTurn={handleTranscriptTurn}
-            voiceName={resolveVoice(profile?.therapist_voice)}
+            voiceName={voiceId}
             systemInstructionText={instruction || undefined}
             onUserTurn={handleUserTurn}
             disabledReason={
