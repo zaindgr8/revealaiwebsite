@@ -14,7 +14,6 @@ import { StreakBadge } from '@/components/StreakBadge';
 import { MoodCardExport } from '@/components/MoodCardExport';
 import { Logo } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
@@ -2197,8 +2196,8 @@ function buildPersonalNotes(
 
 export default function TherapyPage() {
   return (
-    <AuthGuard>
+    <>
       <TherapyInner />
-    </AuthGuard>
+    </>
   );
 }

@@ -4,7 +4,6 @@ import { COLORS } from '@/lib/theme';
 import { Card } from '@/components/Card';
 import { Icon } from '@/components/Icon';
 import { MiniChart } from '@/components/MiniChart';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { EarlyWarnings } from '@/components/EarlyWarnings';
@@ -380,8 +379,8 @@ function ChartCard({
 
 export default function TrendsPage() {
   return (
-    <AuthGuard>
+    <>
       <TrendsInner />
-    </AuthGuard>
+    </>
   );
 }

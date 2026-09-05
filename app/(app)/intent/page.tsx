@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { ScenarioPicker } from '@/components/ScenarioPicker';
 import { ConsentGate } from '@/components/ConsentGate';
@@ -247,8 +246,8 @@ function StepHeading({ n, of, title }: { n: number; of: number; title: string })
 
 export default function IntentPage() {
   return (
-    <AuthGuard>
+    <>
       <IntentInner />
-    </AuthGuard>
+    </>
   );
 }

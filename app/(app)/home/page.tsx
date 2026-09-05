@@ -5,7 +5,6 @@ import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Card } from '@/components/Card';
 import { MiniChart } from '@/components/MiniChart';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { EarlyWarnings } from '@/components/EarlyWarnings';
@@ -845,8 +844,8 @@ function StatItem({ value, label }: { value: number; label: string }) {
 
 export default function HomePage() {
   return (
-    <AuthGuard>
+    <>
       <HomeInner />
-    </AuthGuard>
+    </>
   );
 }

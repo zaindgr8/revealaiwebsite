@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import {
@@ -534,8 +533,8 @@ function HistoryInner() {
 
 export default function HistoryPage() {
   return (
-    <AuthGuard>
+    <>
       <HistoryInner />
-    </AuthGuard>
+    </>
   );
 }
