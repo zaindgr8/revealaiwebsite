@@ -1,4 +1,5 @@
 'use client';
+import { notifySessionDataChanged } from './session-events';
 import { supabase } from './supabase';
 import type { AcousticFeatures } from './audioFeatures';
 import type { CrisisLevel, CrisisResource } from './crisis';
@@ -152,6 +153,7 @@ export async function updateStreak(): Promise<StreakData> {
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data?.error || 'Streak update failed');
+  notifySessionDataChanged('streak');
   return data as StreakData;
 }
 
@@ -293,6 +295,7 @@ export async function analyzeMood({
     );
   }
 
+  if (data.saved !== false) notifySessionDataChanged();
   return data as AnalysisResult;
 }
 
@@ -311,6 +314,7 @@ export async function retrySaveAnalysis(result: AnalysisResult): Promise<void> {
   if (!res.ok || data?.saved !== true) {
     throw new Error(data?.error || 'Could not save this result');
   }
+  notifySessionDataChanged();
 }
 
 export function buildUserContext(sessions: TherapySession[]): UserContext {
@@ -441,6 +445,7 @@ export async function endCoachSession(sessionId: string): Promise<void> {
   });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new Error(data?.error || 'Could not end session');
+  notifySessionDataChanged();
 }
 
 /**
@@ -700,6 +705,7 @@ export async function deleteHistoryItem(item: HistoryItem): Promise<void> {
   const table = HISTORY_TABLES[item.kind];
   const { error } = await supabase.from(table).delete().eq('id', item.id);
   if (error) throw new Error(error.message);
+  notifySessionDataChanged();
 }
 
 export type MoodPoint = {
@@ -795,6 +801,7 @@ export async function getCoachSession(
 export async function deleteTherapySession(id: string) {
   const { error } = await supabase.from('therapy_sessions').delete().eq('id', id);
   if (error) throw new Error(error.message);
+  notifySessionDataChanged();
 }
 
 export async function deleteAllHistorySessions() {
@@ -806,6 +813,8 @@ export async function deleteAllHistorySessions() {
     supabase.from('intent_sessions').delete().eq('user_id', data.user.id),
   ]);
   const failure = results.find((result) => result.error)?.error;
+  // Partial deletion can change the feed even if one table failed.
+  notifySessionDataChanged();
   if (failure) throw new Error(failure.message);
 }
 

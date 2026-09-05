@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
@@ -12,8 +12,8 @@ import {
   getMoodTrend,
   HISTORY_PAGE_SIZE,
   type HistoryItem,
-  type MoodPoint,
 } from '@/lib/ai';
+import { useSessionResource } from '@/lib/session-data';
 import { MiniChart } from '@/components/MiniChart';
 import { fmtChartLabels, fmtFullDate, fmtTime } from '@/lib/format';
 
@@ -31,53 +31,23 @@ const KIND_LABEL: Record<HistoryItem['kind'], string> = {
   intent: 'Recorded conversation',
 };
 
+async function loadHistory() {
+  const items = await getHistoryFeed();
+  return { items, hasMore: items.length === HISTORY_PAGE_SIZE };
+}
+
 function HistoryInner() {
   const router = useRouter();
-  const [sessions, setSessions] = useState<HistoryItem[]>([]);
-  const [trend, setTrend] = useState<MoodPoint[]>([]);
-  const [trendError, setTrendError] = useState(false);
-  const [feedError, setFeedError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const feed = useSessionResource('history', loadHistory);
+  const chart = useSessionResource('mood-trend', getMoodTrend);
+  const sessions = feed.data?.items ?? [];
+  const trend = chart.data ?? [];
+  const feedError = Boolean(feed.error);
+  const trendError = Boolean(chart.error);
+  const loading = feed.loading;
+  const hasMore = feed.data?.hasMore ?? false;
   const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-
-  // `loading` already initialises to true, so there is no setState before the
-  // first await — which is what react-hooks/set-state-in-effect objects to.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        let moodChartFailed = false;
-        // In parallel, and the chart is allowed to fail on its own. The feed is
-        // the screen; a chart that cannot load should not take the list of
-        // sessions down with it.
-        const [items, points] = await Promise.all([
-          getHistoryFeed(),
-          getMoodTrend().catch((e) => {
-            console.error('[history] mood trend unavailable:', (e as Error).message);
-            moodChartFailed = true;
-            return [] as MoodPoint[];
-          }),
-        ]);
-        if (cancelled) return;
-        setSessions(items);
-        setTrend(points);
-        setTrendError(moodChartFailed);
-        setHasMore(items.length === HISTORY_PAGE_SIZE);
-      } catch {
-        if (!cancelled) {
-          setSessions([]);
-          setFeedError(true);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const loadMore = async () => {
     const oldest = sessions[sessions.length - 1];
@@ -85,8 +55,7 @@ function HistoryInner() {
     setLoadingMore(true);
     try {
       const next = await getHistoryFeed({ before: oldest.created_at });
-      setSessions((prev) => [...prev, ...next]);
-      setHasMore(next.length === HISTORY_PAGE_SIZE);
+      feed.setData((previous) => ({ items: [...(previous?.items ?? []), ...next], hasMore: next.length === HISTORY_PAGE_SIZE }));
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -104,13 +73,6 @@ function HistoryInner() {
     setDeleting(item.id);
     try {
       await deleteHistoryItem(item);
-      setSessions((prev) => prev.filter((s) => s.id !== item.id));
-      // The chart is its own query now, so it no longer falls out of the feed
-      // for free. Without this a deleted check-in stays on the line until the
-      // next page load.
-      if (item.kind === 'checkin') {
-        setTrend((prev) => prev.filter((p) => p.id !== item.id));
-      }
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -126,15 +88,13 @@ function HistoryInner() {
       )
     )
       return;
-    setLoading(true);
+    setDeleting('all');
     try {
       await deleteAllHistorySessions();
-      setSessions([]);
-      setTrend([]);
     } catch (e) {
       alert((e as Error).message);
     } finally {
-      setLoading(false);
+      setDeleting(null);
     }
   };
 
@@ -164,6 +124,7 @@ function HistoryInner() {
         {sessions.length > 0 && (
           <button
             onClick={handleDeleteAll}
+            disabled={deleting !== null}
             style={{
               padding: '10px 16px',
               borderRadius: 12,

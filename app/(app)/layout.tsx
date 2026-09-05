@@ -1,10 +1,13 @@
 import { AuthGuard } from '@/components/AuthGuard';
+import { SessionDataProvider } from '@/lib/session-data';
 import { AppNavigation } from '@/components/AppShell';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
-      <AppNavigation>{children}</AppNavigation>
+      <SessionDataProvider>
+        <AppNavigation>{children}</AppNavigation>
+      </SessionDataProvider>
     </AuthGuard>
   );
 }

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCheckins } from '@/lib/session-data';
 import { COLORS } from '@/lib/theme';
 import { Card } from '@/components/Card';
 import { Icon } from '@/components/Icon';
@@ -9,10 +9,6 @@ import { Grid } from '@/components/Grid';
 import { EarlyWarnings } from '@/components/EarlyWarnings';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { ProfileStats, ProfileStatsExplainer } from '@/components/ProfileStats';
-import {
-  getRecentTherapySessions,
-  type TherapySession,
-} from '@/lib/ai';
 import { computeStats, type Stats } from '@/lib/graphMetrics';
 import { fmtChartLabels, fmtDate } from '@/lib/format';
 
@@ -68,24 +64,9 @@ function motivationalMessage(s: Stats) {
 }
 
 function TrendsInner() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [sessions, setSessions] = useState<TherapySession[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getRecentTherapySessions(60)
-      .then((s) => {
-        setSessions(s);
-        setStats(computeStats(s));
-      })
-      .catch((error) => {
-        setSessions([]);
-        setStats(null);
-        setLoadError((error as Error).message || 'Could not load saved check-ins.');
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const { data, loading, error: loadError } = useCheckins();
+  const sessions = data ?? [];
+  const stats = computeStats(sessions);
 
   const motiv = stats ? motivationalMessage(stats) : null;
 

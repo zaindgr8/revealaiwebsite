@@ -14,6 +14,8 @@ import { StreakBadge } from '@/components/StreakBadge';
 import { MoodCardExport } from '@/components/MoodCardExport';
 import { Logo } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
+import { useCheckins } from '@/lib/session-data';
+import { useAuth } from '@/lib/auth-context';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
@@ -27,7 +29,6 @@ import {
   createCoachSession,
   endCoachSession,
   flagSessionCrisis,
-  getRecentTherapySessions,
   retrySaveAnalysis,
   saveChatMessage,
   updateStreak,
@@ -65,7 +66,7 @@ function colorForWellbeingScore(score: number) {
   return COLORS.danger;
 }
 
-const SESSION_STORAGE_KEY = 'reveal_last_session';
+const sessionStorageKey = (userId: string) => `reveal_last_session_v2:${userId}`;
 
 type PersistedSession = {
   results: AnalysisResult;
@@ -75,26 +76,26 @@ type PersistedSession = {
   streak: StreakData | null;
 };
 
-function saveSession(data: PersistedSession) {
+function saveSession(userId: string, data: PersistedSession) {
   try {
-    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem(sessionStorageKey(userId), JSON.stringify(data));
   } catch {
     // Storage full or unavailable — fail silently
   }
 }
 
-function loadSession(): PersistedSession | null {
+function loadSession(userId: string): PersistedSession | null {
   try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = localStorage.getItem(sessionStorageKey(userId));
     return raw ? (JSON.parse(raw) as PersistedSession) : null;
   } catch {
     return null;
   }
 }
 
-function clearSession() {
+function clearSession(userId: string) {
   try {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
+    localStorage.removeItem(sessionStorageKey(userId));
   } catch {
     // ignore
   }
@@ -103,12 +104,9 @@ function clearSession() {
 function TherapyInner() {
   const router = useRouter();
 
-  // Restore last session from localStorage on first render
-  const savedSession = useRef<PersistedSession | null>(null);
-  if (savedSession.current === null) {
-    savedSession.current = loadSession();
-  }
-  const saved = savedSession.current;
+  const { user } = useAuth();
+  const userId = user!.id;
+  const [saved] = useState(() => loadSession(userId));
 
   const [phase, setPhase] = useState<Phase>(saved ? 'results' : 'record');
   const [results, setResults] = useState<AnalysisResult | null>(saved?.results ?? null);
@@ -353,17 +351,8 @@ function TherapyInner() {
     }
   };
 
-  // Pre-load recent history once so we can pass context to analyze + show comparison.
-  useEffect(() => {
-    getRecentTherapySessions(14)
-      .then((s) => {
-        recentSessionsRef.current = s;
-        setPreviousSession(s[0] ?? null);
-      })
-      .catch(() => {
-        recentSessionsRef.current = [];
-      });
-  }, []);
+  const { data: sharedCheckins } = useCheckins();
+  useEffect(() => { recentSessionsRef.current = (sharedCheckins ?? []).slice(0, 14); }, [sharedCheckins]);
 
   const runFullAnalysis = useCallback(
     async (
@@ -374,6 +363,7 @@ function TherapyInner() {
       ans?: string
     ) => {
       setPhase('analyzing');
+      setPreviousSession(recentSessionsRef.current[0] ?? null);
       const uCtx = userContext ?? buildUserContext(recentSessionsRef.current);
 
       const data = await analyzeMood({
@@ -396,7 +386,7 @@ function TherapyInner() {
         } catch {}
       }
 
-      saveSession({
+      saveSession(userId, {
         results: data,
         waveEnvelope: acousticFeatures?.waveform_envelope ?? [],
         segmentEmotions: acousticFeatures?.segment_emotions ?? [],
@@ -411,7 +401,7 @@ function TherapyInner() {
         }
       } catch {}
     },
-    []
+    [userId]
   );
 
   const processAudio = useCallback(
@@ -546,7 +536,7 @@ function TherapyInner() {
     setConversationMessages([]);
     setSavedAudio(null);
     setSavedAcoustic(undefined);
-    clearSession();
+    clearSession(userId);
     setPhase('record');
   };
 
@@ -565,7 +555,7 @@ function TherapyInner() {
         setStreak(updatedStreak);
       } catch {}
 
-      saveSession({
+      saveSession(userId, {
         results: savedResult,
         waveEnvelope,
         segmentEmotions,
@@ -695,7 +685,7 @@ function TherapyInner() {
               Your check-in is in
             </div>
             <div style={{ fontSize: 13, color: COLORS.textSecondary, marginTop: 4 }}>
-              Mood score, energy, stress and insight — all from your voice.
+              Estimated mood, energy and stress — based on what you said and how it sounded.
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
