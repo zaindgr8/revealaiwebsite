@@ -7,12 +7,9 @@
 
 import { readFileSync } from 'node:fs';
 import {
-  ANCHOR_RULE,
   REFLECT_GEMINI_MODEL,
-  SCHEMA_BLOCK,
-  SCORING_RUBRIC,
   SYSTEM_PROMPT,
-  VOCAL_SUMMARY_VS_AI_INSIGHT_RULE,
+  ANALYSIS_SCHEMA,
 } from '../prompts/checkIn';
 
 function loadApiKey(): string {
@@ -100,10 +97,6 @@ async function main() {
   const apiKey = loadApiKey();
   const prompt = [
     SYSTEM_PROMPT,
-    SCHEMA_BLOCK.replace('PITCH_HZ', '166').replace('PAUSE_FREQ', 'high').replace('WPM', '144'),
-    SCORING_RUBRIC,
-    VOCAL_SUMMARY_VS_AI_INSIGHT_RULE,
-    ANCHOR_RULE,
     QA_ACOUSTICS,
     QA_TRANSCRIPT,
   ].join('\n');
@@ -116,9 +109,8 @@ async function main() {
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0,
-          topP: 0.85,
           responseMimeType: 'application/json',
+          responseJsonSchema: ANALYSIS_SCHEMA,
         },
       }),
     }

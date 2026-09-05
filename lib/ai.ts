@@ -34,7 +34,7 @@ export type TherapySession = {
   emotional_mirror?: string;
   duration_seconds?: number;
   // New Phase-1 fields
-  vocal_metrics?: VocalMetrics;
+  vocal_metrics?: VocalMetrics | null;
   vocal_summary?: string;
   transcript_summary?: string;
   ai_insight?: string;

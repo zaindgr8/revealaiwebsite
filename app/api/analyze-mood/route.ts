@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import {
-  SYSTEM_PROMPT,
-  SCHEMA_BLOCK,
-  SCORING_RUBRIC,
-  VOCAL_SUMMARY_VS_AI_INSIGHT_RULE,
-  ANCHOR_RULE,
-  REFLECT_GEMINI_MODEL,
-} from '@/prompts/checkIn';
+import { SYSTEM_PROMPT, ANALYSIS_SCHEMA, REFLECT_GEMINI_MODEL } from '@/prompts/checkIn';
+import { AnalysisValidationError, validateAnalysis, transcriptSpeechRate } from '@/lib/mood-analysis';
 
 export const maxDuration = 60;
 
@@ -60,14 +54,6 @@ function normaliseMode(value: unknown): string {
   return 'neutral';
 }
 
-/** Preserve real zeroes, reject non-numbers, and keep graph values on 0–100. */
-function normaliseScore(value: unknown, fallback = 50): number {
-  if (value === null || value === undefined || value === '') return fallback;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return fallback;
-  return Math.round(Math.min(100, Math.max(0, parsed)));
-}
-
 function normaliseRecommendations(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
@@ -101,7 +87,6 @@ function makeCrisisContactLocationSafe(value: string): string {
 type AcousticFeatures = {
   avg_pitch_hz: number;
   pitch_variability: number;
-  speech_rate_wpm: number;
   pause_count: number;
   pause_frequency: 'low' | 'medium' | 'high';
   volume_consistency: number;
@@ -127,25 +112,23 @@ function buildAcousticContext(
     lines.push(`Therapist Follow-up Question: "${deepQuestion}"`);
     lines.push(`User Answer to Question: "${deepAnswer}"`);
     lines.push(`━━ END CONVERSATION TURN ━━`);
-    lines.push(`IMPORTANT: Integrate the user's answer into your deep insight, root cause diagnosis, readiness score, and recommendations. This interaction revealed critical additional context.`);
+    lines.push(`Use the answer as additional self-reported context, separately from the recording.`);
   }
 
   if (af) {
-    lines.push(`\n\n━━ REAL MEASURED ACOUSTIC DATA (signal-processed before AI call) ━━`);
+    lines.push(`\n\n━━ ESTIMATED AUDIO FEATURES (supporting context only) ━━`);
     lines.push(`Signal quality: ${af.signal_quality}`);
     lines.push(`Duration: ${af.duration_seconds}s`);
     lines.push(`Average pitch (F0): ${af.avg_pitch_hz} Hz`);
     lines.push(`Pitch variability: ${af.pitch_variability}/100 (0=monotone, 100=highly expressive)`);
-    lines.push(`Speech rate: ${af.speech_rate_wpm} WPM`);
     lines.push(`Pause count: ${af.pause_count} pauses`);
     lines.push(`Pause frequency: ${af.pause_frequency}`);
     lines.push(`Volume consistency: ${af.volume_consistency}/100 (100=steady, 0=erratic)`);
-    lines.push(`Jitter-shimmer index: ${af.jitter_shimmer_index}/100 (0=smooth, 100=rough/tense)`);
+    lines.push(`Jitter-shimmer index: ${af.jitter_shimmer_index}/100 (unvalidated frame-variation proxy, not psychological tension)`);
     lines.push(`━━ END MEASURED DATA ━━`);
-    lines.push(`\nIMPORTANT: Copy vocal_metrics exactly from the measured values above.`);
-    lines.push(`Your vocal_summary and ai_insight MUST reference these specific numbers.`);
+    lines.push('Do not quote these values in prose or use them as direct emotion scores.');
   } else {
-    lines.push(`\n\n[Note: Acoustic pre-processing data unavailable. Estimate vocal metrics from the audio directly but be conservative — do not over-claim precision. Still lead with vocal evidence.]`);
+    lines.push(`\n\n[Note: Acoustic pre-processing data unavailable. Do not invent numerical measurements. Use clearly audible observations and the spoken account.]`);
     lines.push(`Duration: ~${durationSeconds}s`);
   }
 
@@ -171,78 +154,15 @@ async function callGemini(
 ): Promise<Record<string, unknown>> {
   const acousticCtx = buildAcousticContext(acousticFeatures, durationSeconds, userContext, deepQuestion, deepAnswer);
 
-  // Inline concrete measured values into the example sentences in the schema
-  // so the model has a concrete reference for what real numbers look like.
-  let schema = SCHEMA_BLOCK;
-  if (acousticFeatures) {
-    schema = schema
-      .replace('PITCH_HZ', String(acousticFeatures.avg_pitch_hz))
-      .replace('PAUSE_FREQ', acousticFeatures.pause_frequency)
-      .replace('WPM', String(acousticFeatures.speech_rate_wpm));
-  }
-
-  // These three blocks were written as prompt fragments but were never
-  // referenced — fullPrompt was built from SYSTEM_PROMPT + schema + context
-  // only, so none of them ever reached the model. Almost certainly dropped in
-  // a refactor rather than removed deliberately: they have no other purpose.
-  //
-  // SCORING_RUBRIC is the one that mattered. SYSTEM_PROMPT explains that the
-  // five scores must be coherent with each other, but nothing told the model
-  // how to DERIVE them from the measured acoustics — so energy, stress and
-  // confidence were being set without reference to pitch variability, jitter
-  // or volume consistency, despite those being measured and passed in.
-  //
-  // NOTE: restoring these changes check-in output. Compare a few analyses
-  // before and after once GEMINI_API_KEY is available.
-  const fullPrompt = [
-    SYSTEM_PROMPT,
-    schema,
-    SCORING_RUBRIC,
-    VOCAL_SUMMARY_VS_AI_INSIGHT_RULE,
-    ANCHOR_RULE,
-    acousticCtx,
-  ].join('\n');
-
   const body = {
-    contents: [
-      {
-        parts: [
-          { inlineData: { mimeType, data: audioBase64 } },
-          { text: fullPrompt },
-        ],
-      },
-    ],
+    systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: [{ parts: [
+      { inlineData: { mimeType, data: audioBase64 } },
+      { text: acousticCtx || 'Analyze this recording.' },
+    ] }],
     generationConfig: {
-      // Measured 6 Aug 2026: same audio, same prompt, six runs each.
-      //
-      //                  temp 0.3        temp 0
-      //   mood_score     30-45 (±15)     35-40 (±5)
-      //   energy_level   40-65 (±25)     60    (±0)
-      //   stress_level   70-85 (±15)     80    (±0)
-      //   confidence     40-60 (±20)     45-50 (±5)
-      //
-      // At 0.3 the scores were not reproducible: identical audio produced a
-      // 25-point spread on energy. That matters beyond cosmetics, because
-      // computeEarlyWarnings() fires burnout on "energy dropped 15+ points
-      // across 4 sessions" — a threshold well inside the noise band. The
-      // alerts could trigger on measurement noise alone.
-      //
-      // detected_mode was stable at both settings (anxious, 6/6 either way).
-      // The qualitative read was never the problem; the numbers were.
-      //
-      // Trade-off: this also makes ai_insight and vocal_summary more
-      // deterministic, so wording will vary less between sessions. Worth
-      // watching. If the prose becomes noticeably repetitive, split into two
-      // calls — scores at 0, narrative at 0.6 — rather than reintroducing
-      // variance into numbers users are shown as trends.
-      // The settings the note above describes are gone, and the finding it
-      // records still stands. Gemini 3.x ignores temperature, topP and topK
-      // outright — no error, no warning — so the reproducibility this route
-      // depends on is no longer bought by a number. Re-measure the energy
-      // spread on gemini-3.7-flash. If it has come back, the fix is a
-      // stricter schema and a prompt that pins the scoring rules, not a
-      // parameter the model discards.
       responseMimeType: 'application/json',
+      responseJsonSchema: ANALYSIS_SCHEMA,
     },
   };
 
@@ -263,7 +183,7 @@ async function callGemini(
 
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) throw new Error('Gemini returned no parseable JSON');
-  return JSON.parse(match[0]);
+  return validateAnalysis(JSON.parse(match[0]));
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,11 +223,15 @@ export async function POST(req: NextRequest) {
     deep_answer?: string;
   };
 
-  if (!audio_base64 || !mime_type) {
+  if (typeof audio_base64 !== 'string' || !audio_base64 || typeof mime_type !== 'string' || !mime_type) {
     return NextResponse.json(
       { error: 'audio_base64 and mime_type are required' },
       { status: 400 }
     );
+  }
+
+  if (typeof duration_seconds !== 'number' || !Number.isFinite(duration_seconds) || duration_seconds < 3 || duration_seconds > 180) {
+    return NextResponse.json({ error: 'Please record a few seconds of clear speech (up to three minutes).' }, { status: 400 });
   }
 
   // Authenticate via Supabase JWT
@@ -369,44 +293,33 @@ export async function POST(req: NextRequest) {
       ? String(analysis.readiness_note)
       : null;
 
-    // Build vocal_metrics — prefer what Gemini returned, overlay with measured data for trust
-    const rawVm = analysis.vocal_metrics as Record<string, unknown> | undefined;
+    // Use transcription for speech rate; sustained loudness is not a word count.
     const af = acoustic_features ?? null;
-    const vocalMetrics = {
-      pitch_variability: af?.pitch_variability ?? Number(rawVm?.pitch_variability ?? 50),
-      avg_pitch_hz: af?.avg_pitch_hz ?? Number(rawVm?.avg_pitch_hz ?? 0),
-      pause_frequency: af?.pause_frequency ?? (String(rawVm?.pause_frequency ?? 'medium') as 'low' | 'medium' | 'high'),
-      pause_count: af?.pause_count ?? Number(rawVm?.pause_count ?? 0),
-      speech_rate_wpm: af?.speech_rate_wpm ?? Number(rawVm?.speech_rate_wpm ?? 120),
-      jitter_shimmer_index: af?.jitter_shimmer_index ?? Number(rawVm?.jitter_shimmer_index ?? 30),
-      volume_consistency: af?.volume_consistency ?? Number(rawVm?.volume_consistency ?? 70),
-    };
+    const measuredDuration = af?.duration_seconds;
+    const duration = typeof measuredDuration === 'number' && Number.isFinite(measuredDuration) && measuredDuration >= 3 && measuredDuration <= 180
+      ? measuredDuration : duration_seconds;
+    const speechRate = transcriptSpeechRate(String(analysis.transcript), duration);
+    const validFeatures = af && ['pitch_variability', 'avg_pitch_hz', 'pause_count', 'jitter_shimmer_index', 'volume_consistency']
+      .every((key) => typeof af[key as keyof AcousticFeatures] === 'number' && Number.isFinite(af[key as keyof AcousticFeatures]));
+    const vocalMetrics = validFeatures ? {
+      pitch_variability: af.pitch_variability,
+      avg_pitch_hz: af.avg_pitch_hz,
+      pause_frequency: af.pause_frequency,
+      pause_count: af.pause_count,
+      speech_rate_wpm: speechRate,
+      jitter_shimmer_index: af.jitter_shimmer_index,
+      volume_consistency: af.volume_consistency,
+    } : null;
 
     const sessionData = {
       user_id: user.id,
-      mood_score: normaliseScore(analysis.mood_score),
-      energy: normaliseScore(analysis.energy_level ?? analysis.energy),
-      stress: normaliseScore(analysis.stress_level ?? analysis.stress),
-      positivity: normaliseScore(analysis.positivity),
-      confidence: normaliseScore(analysis.confidence),
-      // Capitalised deliberately. therapy_sessions has a CHECK constraint that
-      // only accepts 'Slow' | 'Normal' | 'Fast', and every insert here was
-      // writing lowercase 'normal' — which failed with 23514 on every single
-      // check-in, independently of the missing-column problem.
-      //
-      // Note the model is never asked for `pace`: it is absent from
-      // SCHEMA_BLOCK, so analysis.pace is always undefined and this value is
-      // always the fallback. That is worth fixing properly, but the immediate
-      // bug is the casing.
-      pace: normalisePace(analysis.pace),
-
-      // NOT NULL on the table, and this route has never written them — the
-      // insert failed with 23502 before it could reach anything else. The nine
-      // surviving rows were written by code that predates this repository.
-      //
-      // Worth keeping rather than relaxing the constraint: the product now
-      // uses two AI vendors, so knowing which one produced a given analysis
-      // stops being trivia the moment output quality is ever questioned.
+      mood_score: Number(analysis.mood_score),
+      energy: Number(analysis.energy_level ?? analysis.energy),
+      stress: Number(analysis.stress_level ?? analysis.stress),
+      positivity: Number(analysis.positivity),
+      confidence: Number(analysis.confidence),
+      pace: normalisePace(speechRate < 100 ? 'slow' : speechRate > 180 ? 'fast' : 'normal'),
+      // Preserve the model provenance required by the existing save contract.
       ai_provider: 'gemini',
       ai_model: GEMINI_MODEL,
       detected_mode: normaliseMode(analysis.detected_mode),
@@ -416,7 +329,7 @@ export async function POST(req: NextRequest) {
       daily_prompt: todaysAction,
       transcript: analysis.transcript ? String(analysis.transcript) : null,
       emotional_mirror: vocalSummary || null,
-      duration_seconds: duration_seconds ?? 0,
+      duration_seconds: duration,
       // New Phase-1 columns (graceful — ignored by DB if column doesn't exist yet)
       vocal_metrics: vocalMetrics,
       vocal_summary: vocalSummary || null,
@@ -469,9 +382,12 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ...result, saved: true });
   } catch (err) {
-    console.error('[analyze-mood] Error:', err);
+    if (err instanceof AnalysisValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 422 });
+    }
+    console.error('[analyze-mood] Analysis failed');
     return NextResponse.json(
-      { error: (err as Error).message || 'Analysis failed' },
+      { error: 'Analysis failed. Please try again.' },
       { status: 500 }
     );
   }

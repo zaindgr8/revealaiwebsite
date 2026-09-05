@@ -19,13 +19,12 @@ export type SegmentEmotion = {
   pitch_hz: number;  // 0 if unvoiced
   tension: number;   // 0-100 jitter proxy for this window
   color: string;     // precomputed hex
-  label: string;     // 'calm' | 'neutral' | 'energised' | 'tense'
+  label: string;     // 'quiet' | 'moderate' | 'louder' | 'variable'
 };
 
 export type AcousticFeatures = {
   avg_pitch_hz: number;
   pitch_variability: number;       // 0-100 (100 = highly variable)
-  speech_rate_wpm: number;
   pause_count: number;
   pause_frequency: 'low' | 'medium' | 'high';
   volume_consistency: number;      // 0-100 (100 = perfectly consistent)
@@ -44,24 +43,23 @@ const MIN_PITCH_HZ = 70;
 const MAX_PITCH_HZ = 400;
 const SILENCE_THRESHOLD = 0.02;
 const PAUSE_MIN_MS = 200;
-const SYLLABLE_THRESHOLD = 0.15;
-const SYLLABLE_MIN_GAP_MS = 80;
 const ENVELOPE_SAMPLES = 500;     // target resolution for waveform display
 const SEGMENT_WINDOW_S = 2;       // seconds per emotion segment
 
 // ─── Emotion color palette ────────────────────────────────────────────────────
 const EMOTION_COLORS: Record<string, string> = {
-  calm:      '#3B82F6',  // blue
-  neutral:   '#8B5CF6',  // purple
-  energised: '#F59E0B',  // gold
-  tense:     '#EF4444',  // red
+  quiet:      '#3B82F6',  // blue
+  moderate:   '#8B5CF6',  // purple
+  louder:    '#F59E0B',  // gold
+  variable:     '#EF4444',  // red
 };
 
-function classifySegment(energy: number, pitch: number, tension: number): string {
-  if (tension > 55) return 'tense';
-  if (energy > 65 && pitch > 170) return 'energised';
-  if (energy < 35 || pitch === 0) return 'calm';
-  return 'neutral';
+// Describes sound level only; these heuristic windows cannot identify emotions.
+function classifySegment(energy: number, variation: number): string {
+  if (variation > 55) return 'variable';
+  if (energy > 65) return 'louder';
+  if (energy < 35) return 'quiet';
+  return 'moderate';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -139,7 +137,6 @@ export async function extractAcousticFeatures(
   const frameSamples = Math.floor((FRAME_MS / 1000) * sampleRate);
   const hopSamples   = Math.floor((HOP_MS / 1000) * sampleRate);
   const pauseMinSamples    = Math.floor((PAUSE_MIN_MS / 1000) * sampleRate);
-  const syllableGapSamples = Math.floor((SYLLABLE_MIN_GAP_MS / 1000) * sampleRate);
 
   // ── Per-frame analysis ───────────────────────────────────────────────────
   const frameRmsList: number[] = [];
@@ -153,7 +150,6 @@ export async function extractAcousticFeatures(
 
   const peakRms = frameRmsList.length ? Math.max(...frameRmsList) : 1;
   const silenceLevel  = peakRms * SILENCE_THRESHOLD;
-  const syllableLevel = peakRms * SYLLABLE_THRESHOLD;
 
   // ── Pause detection ──────────────────────────────────────────────────────
   let pauseCount = 0;
@@ -166,19 +162,7 @@ export async function extractAcousticFeatures(
     } else { silenceRun = 0; inPause = false; }
   }
 
-  // ── Syllable / speech rate ───────────────────────────────────────────────
-  let syllableCount = 0;
-  let lastNucleusEnd = -syllableGapSamples;
-  for (let i = 0; i < frameRmsList.length; i++) {
-    const samplePos = i * hopSamples;
-    if (frameRmsList[i] >= syllableLevel && samplePos - lastNucleusEnd >= syllableGapSamples) {
-      syllableCount++;
-      lastNucleusEnd = samplePos;
-    }
-  }
-
-  const speechSeconds = Math.max(duration - pauseCount * (PAUSE_MIN_MS / 1000), 1);
-  const speech_rate_wpm = Math.round((syllableCount / 1.5) / (speechSeconds / 60));
+  // Speech rate is computed server-side from the transcript and recording duration.
 
   // ── Global pitch metrics ─────────────────────────────────────────────────
   const validPitches = (framePitches.filter(p => p !== null) as number[])
@@ -247,7 +231,7 @@ export async function extractAcousticFeatures(
     // Energy: mean RMS in window normalised to 0-100
     const segRms = frameRmsList.slice(fStart, fEnd);
     const segMeanRms = segRms.reduce((a, b) => a + b, 0) / segRms.length;
-    const energy = clamp(Math.round((segMeanRms / peakRms) * 100), 0, 100);
+    const energy = clamp(Math.round((segMeanRms / (peakRms || 1)) * 100), 0, 100);
 
     // Pitch: mean of voiced frames in window
     const segPitches = framePitches.slice(fStart, fEnd)
@@ -263,7 +247,7 @@ export async function extractAcousticFeatures(
     const segMeanRmsDelta = fEnd > fStart + 1 ? segRmsDelta / (fEnd - fStart - 1) : 0;
     const tension = clamp(Math.round((segMeanRmsDelta / 0.05) * 100), 0, 100);
 
-    const label = classifySegment(energy, pitch_hz, tension);
+    const label = classifySegment(energy, tension);
 
     segment_emotions.push({
       t_start: seg * SEGMENT_WINDOW_S,
@@ -279,12 +263,11 @@ export async function extractAcousticFeatures(
   return {
     avg_pitch_hz,
     pitch_variability,
-    speech_rate_wpm: clamp(speech_rate_wpm, 0, 300),
     pause_count: pauseCount,
     pause_frequency,
     volume_consistency,
     jitter_shimmer_index,
-    duration_seconds: Math.round(duration),
+    duration_seconds: Math.round(duration * 100) / 100,
     signal_quality,
     waveform_envelope,
     segment_emotions,

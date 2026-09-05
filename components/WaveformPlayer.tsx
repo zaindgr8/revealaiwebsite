@@ -13,10 +13,10 @@ export type WaveformPlayerProps = {
 };
 
 const LEGEND = [
-  { label: 'Calm',      color: '#3B82F6' },
-  { label: 'Neutral',   color: '#8B5CF6' },
-  { label: 'Energised', color: '#F59E0B' },
-  { label: 'Tense',     color: '#EF4444' },
+  { label: 'Quiet',      color: '#3B82F6' },
+  { label: 'Moderate',   color: '#8B5CF6' },
+  { label: 'Louder', color: '#F59E0B' },
+  { label: 'Variable',     color: '#EF4444' },
 ];
 
 function formatTime(s: number): string {
@@ -248,7 +248,7 @@ export function WaveformPlayer({
               Voice Waveform
             </div>
             <div style={{ fontSize: 10, color: COLORS.textMuted, marginTop: 1 }}>
-              Color-coded by emotional signal per 2s segment
+              Estimated sound level per 2s segment
             </div>
           </div>
         </div>
