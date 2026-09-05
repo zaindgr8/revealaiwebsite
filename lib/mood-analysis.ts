@@ -36,7 +36,7 @@ export function validateAnalysis(analysis: Record<string, unknown>) {
       throw new AnalysisValidationError('The analysis returned an incomplete explanation. Please try again.');
     }
   }
-  if (!Array.isArray(analysis.recommendations) || !analysis.recommendations.length ||
+  if (!Array.isArray(analysis.recommendations) || analysis.recommendations.length !== 3 ||
       !analysis.recommendations.every((item) => typeof item === 'string' && item.trim())) {
     throw new AnalysisValidationError('The analysis returned incomplete recommendations. Please try again.');
   }

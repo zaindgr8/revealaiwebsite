@@ -21,7 +21,7 @@ function fixture({ status = 'ok', dbError = null, authorized = true } = {}) {
     mood_score: 80, energy_level: 60, stress_level: 0, positivity: 80, confidence: 70,
     detected_mode: 'calm', narrative_type: 'present', vocal_summary: 'Your delivery sounds even.',
     transcript_summary: 'You described feeling relaxed.', ai_insight: 'You described a calm day.',
-    todays_action: 'Make time for the activity you enjoyed.', recommendations: ['Repeat the activity you enjoyed.'],
+    todays_action: 'Make time for the activity you enjoyed.', recommendations: ['Repeat the activity you enjoyed.', 'Keep time for the people you mentioned.', 'Write down what helped today.'],
     readiness_score: null, readiness_note: null,
   };
   const exports = {};

@@ -31,7 +31,7 @@ transcript: faithful transcription of the recording, not the follow-up answer.
 vocal_summary: one sentence describing clearly audible delivery, under 25 words. No technical numbers or jargon.
 transcript_summary: one sentence about what they discussed.
 ai_insight: 45-70 words, grounded in one or two specific details they actually said. Distinguish observation from interpretation. Do not manufacture a surprise insight.
-recommendations: 1-3 short practical actions relevant to their account.
+recommendations: exactly 3 short practical actions relevant to their account.
 todays_action: one concrete action relevant today.
 For insufficient_audio, use empty strings and an empty recommendations list for non-applicable prose, neutral mode and present narrative. The application handles support/retry messaging.`;
 
@@ -53,7 +53,7 @@ export const ANALYSIS_SCHEMA = {
     ai_insight: { type: 'string' },
     readiness_score: nullableScore,
     readiness_note: { type: ['string', 'null'] },
-    recommendations: { type: 'array', items: { type: 'string' } },
+    recommendations: { type: 'array', maxItems: 3, items: { type: 'string' } },
     todays_action: { type: 'string' },
   },
   required: ['analysis_status', 'transcript', 'mood_score', 'energy_level', 'stress_level', 'positivity', 'confidence', 'detected_mode', 'narrative_type', 'vocal_summary', 'transcript_summary', 'ai_insight', 'readiness_score', 'readiness_note', 'recommendations', 'todays_action'],
