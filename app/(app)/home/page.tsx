@@ -1,23 +1,20 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Card } from '@/components/Card';
 import { MiniChart } from '@/components/MiniChart';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { EarlyWarnings } from '@/components/EarlyWarnings';
 import { StreakBadge } from '@/components/StreakBadge';
 import { useAuth } from '@/lib/auth-context';
 import {
-  getRecentTherapySessions,
   getStreak,
-  type TherapySession,
-  type StreakData,
 } from '@/lib/ai';
-import { computeStats, type Stats } from '@/lib/graphMetrics';
+import { computeStats } from '@/lib/graphMetrics';
+import { useCheckins, useSessionResource } from '@/lib/session-data';
 import { fmtChartLabels, fmtDate, todayPretty } from '@/lib/format';
 
 function modeColor(mode: string) {
@@ -28,13 +25,11 @@ function modeColor(mode: string) {
 function HomeInner() {
   const router = useRouter();
   const { user, profile } = useAuth();
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [sessions, setSessions] = useState<TherapySession[]>([]);
-  const [lastSession, setLastSession] = useState<TherapySession | null>(null);
-  const [loadingStats, setLoadingStats] = useState(true);
-  const [statsError, setStatsError] = useState<string | null>(null);
-  // Phase 3 states
-  const [streak, setStreak] = useState<StreakData | null>(null);
+  const { data, loading: loadingStats, error: statsError, refresh: loadStats } = useCheckins();
+  const sessions = (data ?? []).slice(0, 30);
+  const stats = computeStats(sessions);
+  const lastSession = sessions[0] ?? null;
+  const { data: streak } = useSessionResource('streak', getStreak);
   const [nudgeDismissed, setNudgeDismissed] = useState(false);
   const [recapDismissed, setRecapDismissed] = useState(true);
 
@@ -52,34 +47,6 @@ function HomeInner() {
     'there';
 
   const dateString = todayPretty();
-
-  const loadStats = useCallback(async () => {
-    setLoadingStats(true);
-    setStatsError(null);
-    try {
-      const recent = await getRecentTherapySessions(30);
-      setSessions(recent);
-      setStats(computeStats(recent));
-      setLastSession(recent[0] ?? null);
-    } catch (error) {
-      setSessions([]);
-      setStats(null);
-      setLastSession(null);
-      setStatsError((error as Error).message || 'Could not load your saved check-ins.');
-    }
-
-    try {
-      setStreak(await getStreak());
-    } catch {
-      setStreak(null);
-    } finally {
-      setLoadingStats(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadStats();
-  }, [loadStats]);
 
   const tooltipLabels = stats?.last7Dates ? fmtChartLabels(stats.last7Dates) : undefined;
   const rangeLabels = tooltipLabels?.length
@@ -845,8 +812,8 @@ function StatItem({ value, label }: { value: number; label: string }) {
 
 export default function HomePage() {
   return (
-    <AuthGuard>
+    <>
       <HomeInner />
-    </AuthGuard>
+    </>
   );
 }

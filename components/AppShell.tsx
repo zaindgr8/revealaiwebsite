@@ -1,21 +1,16 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { createContext, useContext, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
 import { Icon } from './Icon';
-import { Logo, LogoText } from './Logo';
+import { Logo } from './Logo';
 import { useAuth } from '@/lib/auth-context';
 import { signOut } from '@/lib/auth';
 import { useIsMobile } from '@/hooks/useMediaQuery';
 
 type NavItem = { href: string; label: string; icon: string };
 
-// Every href here must match a route under app/. Two of these pointed at
-// /journey and /sessions, which have never existed — the pages were built as
-// /trends and /history and the nav was not updated, so both items 404'd and
-// Profile History was reachable only from inside Settings. That matters beyond
-// navigation: T-5 and T-6 are demoed on the history screen.
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
   { href: '/therapy', label: 'Reflect', icon: 'pulse' },
@@ -37,21 +32,9 @@ const NAV: NavItem[] = [
 
 const SIDEBAR_WIDTH = 240;
 
-export function AppShell({
-  children,
-  title,
-  subtitle,
-  contentMaxWidth = 1180,
-  contentPadding,
-  disableContentPadding = false,
-}: {
-  children: React.ReactNode;
-  title?: string;
-  subtitle?: string;
-  contentMaxWidth?: number;
-  contentPadding?: string;
-  disableContentPadding?: boolean;
-}) {
+const NavigationContext = createContext({ isMobile: false, openSidebar: () => {} });
+
+export function AppNavigation({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, profile } = useAuth();
@@ -239,7 +222,30 @@ export function AppShell({
         />
       )}
 
-      {/* Main area */}
+      <NavigationContext.Provider value={{ isMobile, openSidebar: () => setSidebarOpen(true) }}>
+        {children}
+      </NavigationContext.Provider>
+    </div>
+  );
+}
+
+export function AppShell({
+  children,
+  title,
+  subtitle,
+  contentMaxWidth = 1180,
+  contentPadding,
+  disableContentPadding = false,
+}: {
+  children: React.ReactNode;
+  title?: string;
+  subtitle?: string;
+  contentMaxWidth?: number;
+  contentPadding?: string;
+  disableContentPadding?: boolean;
+}) {
+  const { isMobile, openSidebar } = useContext(NavigationContext);
+  return (
       <div
         style={{
           marginLeft: isMobile ? 0 : SIDEBAR_WIDTH,
@@ -265,7 +271,7 @@ export function AppShell({
         >
           {isMobile && (
             <button
-              onClick={() => setSidebarOpen(true)}
+              onClick={openSidebar}
               aria-label="Open menu"
               style={{
                 width: 40,
@@ -354,7 +360,6 @@ export function AppShell({
           {children}
         </main>
       </div>
-    </div>
   );
 }
 
@@ -372,14 +377,7 @@ function SidebarItem({
   onClick: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const [pending, setPending] = useState(false);
-
-  // Clear pending once pathname settles on this item
-  useEffect(() => {
-    if (active) setPending(false);
-  }, [active]);
-
-  const isActive = active || pending;
+  const isActive = active;
   const bg = isActive
     ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.1))'
     : hover
@@ -391,10 +389,8 @@ function SidebarItem({
     <Link
       href={href}
       prefetch
-      onClick={() => {
-        setPending(true);
-        onClick();
-      }}
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{

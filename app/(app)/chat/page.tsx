@@ -3,7 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS, MODE_COLOR } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import { CrisisEscalation } from '@/components/CrisisEscalation';
@@ -432,8 +431,8 @@ function ChatInner() {
 
 export default function ChatPage() {
   return (
-    <AuthGuard>
+    <>
       <ChatInner />
-    </AuthGuard>
+    </>
   );
 }

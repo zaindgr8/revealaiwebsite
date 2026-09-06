@@ -5,7 +5,6 @@ import { COLORS } from '@/lib/theme';
 import { Card } from '@/components/Card';
 import { Logo, LogoText } from '@/components/Logo';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Grid } from '@/components/Grid';
 import { useAuth } from '@/lib/auth-context';
@@ -858,8 +857,8 @@ const rowSubStyle: React.CSSProperties = {
 
 export default function SettingsPage() {
   return (
-    <AuthGuard>
+    <>
       <SettingsInner />
-    </AuthGuard>
+    </>
   );
 }

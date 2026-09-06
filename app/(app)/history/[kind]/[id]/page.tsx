@@ -21,7 +21,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { COLORS, MODE_COLOR } from '@/lib/theme';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { Icon } from '@/components/Icon';
 import { fmtFullDate, fmtTime } from '@/lib/format';
@@ -386,8 +385,8 @@ function ChatBody({
 
 export default function HistoryDetailPage() {
   return (
-    <AuthGuard>
+    <>
       <DetailInner />
-    </AuthGuard>
+    </>
   );
 }

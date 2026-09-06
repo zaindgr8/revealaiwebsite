@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Bricolage_Grotesque, Poppins } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
-import { NavProgress } from "@/components/NavProgress";
 
 const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -35,7 +34,6 @@ export default function RootLayout({
     <html lang="en" className={`${bricolage.variable} ${poppins.variable}`}>
       <body suppressHydrationWarning>
         <AuthProvider>
-          <NavProgress />
           {children}
         </AuthProvider>
       </body>

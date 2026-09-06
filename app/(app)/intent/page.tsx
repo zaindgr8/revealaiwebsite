@@ -1,8 +1,8 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
-import { AuthGuard } from '@/components/AuthGuard';
+import { useSessionResource } from '@/lib/session-data';
 import { AppShell } from '@/components/AppShell';
 import { ScenarioPicker } from '@/components/ScenarioPicker';
 import { ConsentGate } from '@/components/ConsentGate';
@@ -34,32 +34,14 @@ type Step = 'loading' | 'enrol' | 'scenario' | 'consent' | 'ready';
 
 function IntentInner() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>('loading');
+  const enrollment = useSessionResource('enrollment', getEnrollment);
+  const [chosenStep, setStep] = useState<Step | null>(null);
+  const step = chosenStep ?? (enrollment.loading ? 'loading' : enrollment.data ? 'scenario' : 'enrol');
   const [scenario, setScenario] = useState<IntentScenario | null>(null);
   const [session, setSession] = useState<IntentSession | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // Enrollment first. Without a voice sample the analysis cannot tell
-        // which speaker is the user, so there is no point recording anything.
-        const enrollment = await getEnrollment();
-        if (cancelled) return;
-        setStep(enrollment ? 'scenario' : 'enrol');
-      } catch (e) {
-        if (!cancelled) {
-          setError((e as Error).message);
-          setStep('enrol');
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const [actionError, setError] = useState<string | null>(null);
+  const error = actionError ?? enrollment.error;
 
   const goToConsent = async () => {
     if (!scenario) return;
@@ -143,7 +125,7 @@ function IntentInner() {
               You only do this once. It lets us tell which side of a
               conversation is yours.
             </p>
-            <VoiceEnrollment onChange={() => setStep('scenario')} />
+            <VoiceEnrollment onChange={() => { enrollment.refresh(); setStep('scenario'); }} />
           </>
         )}
 
@@ -247,8 +229,8 @@ function StepHeading({ n, of, title }: { n: number; of: number; title: string })
 
 export default function IntentPage() {
   return (
-    <AuthGuard>
+    <>
       <IntentInner />
-    </AuthGuard>
+    </>
   );
 }

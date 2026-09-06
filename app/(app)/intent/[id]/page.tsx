@@ -2,7 +2,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import {
   TERMINAL_STATUSES,
@@ -810,8 +809,8 @@ function Button({
 
 export default function IntentResultPage() {
   return (
-    <AuthGuard>
+    <>
       <ResultInner />
-    </AuthGuard>
+    </>
   );
 }

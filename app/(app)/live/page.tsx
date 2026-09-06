@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
-import { AuthGuard } from '@/components/AuthGuard';
 import { AppShell } from '@/components/AppShell';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
 import LiveVoiceChat, { type LiveTranscriptTurn } from '@/components/LiveVoiceChat';
@@ -451,8 +450,8 @@ function Banner({ children }: { children: React.ReactNode }) {
 
 export default function LivePage() {
   return (
-    <AuthGuard>
+    <>
       <LiveInner />
-    </AuthGuard>
+    </>
   );
 }
