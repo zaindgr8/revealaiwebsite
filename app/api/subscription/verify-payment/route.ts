@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { MONTHLY_MINUTES } from '@/lib/pricing';
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -7,7 +8,7 @@ const supabaseAdmin = createClient(
 );
 
 const ZIINA_API_KEY = process.env.ZIINA_API_KEY!;
-const SUBSCRIPTION_MINUTES = 150;
+const SUBSCRIPTION_MINUTES = MONTHLY_MINUTES;
 
 export async function POST(req: Request) {
   try {
