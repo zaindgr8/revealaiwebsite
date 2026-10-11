@@ -8,7 +8,7 @@ type Props = {
   style?: React.CSSProperties;
   /**
    * Anchor target, so another page can link straight to this card with a
-   * fragment (/settings#elena-voice). Optional: most cards have no anchor.
+   * fragment (/settings#therapist-voice). Optional: most cards have no anchor.
    */
   id?: string;
 };
@@ -18,6 +18,8 @@ export function Card({ children, onClick, style, id }: Props) {
     <div
       id={id}
       onClick={onClick}
+      // Soft layered shadow on every card; clickable ones also lift on hover.
+      className={onClick ? 'rv-card rv-lift' : 'rv-card'}
       style={{
         background: COLORS.card,
         borderRadius: 20,

@@ -6,7 +6,7 @@ import { ELENA_LIVE_PERSONA } from '@/prompts/elena';
 /**
  * The system instruction for a live call, assembled server-side.
  *
- * Elena knew nothing about the person on a call. /chat has had memory since
+ * Freya knew nothing about the person on a call. /chat has had memory since
  * T-2, but a live call never touched the server: the browser opened a socket
  * to Google with a hard-coded persona, so the same user met a therapist with
  * history in one place and a stranger in the other.
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(
     {
       systemInstruction: `${ELENA_LIVE_PERSONA}${memoryBlock}`,
-      // Lets the page tell the user whether Elena has anything to remember,
+      // Lets the page tell the user whether Freya has anything to remember,
       // rather than promising memory it may not have.
       hasMemory: memoryBlock.length > 0,
       contextPartial: Boolean(sessionsRes.error || moodRes.error),

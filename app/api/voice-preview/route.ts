@@ -4,7 +4,7 @@ import { resolveVoice } from '@/lib/voices';
 import { GEMINI_TTS_MODEL } from '@/lib/geminiModel';
 
 /**
- * A short spoken sample of one Google voice, so a user can hear Elena before
+ * A short spoken sample of one Google voice, so a user can hear Freya before
  * choosing her voice.
  *
  * This does not go through /api/tts. That route speaks with ElevenLabs or
@@ -25,7 +25,7 @@ const BITS_PER_SAMPLE = 16;
 const CHANNELS = 1;
 
 const SAMPLE_LINE =
-  "Hi, I'm Elena. Whenever you're ready, tell me how today has been for you.";
+  "Hi, I'm Freya. Whenever you're ready, tell me how today has been for you.";
 
 /** Wrap raw PCM in a WAV container so an <audio> element can play it. */
 function pcmToWav(pcm: Buffer): Buffer {

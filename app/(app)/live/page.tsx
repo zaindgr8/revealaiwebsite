@@ -21,7 +21,7 @@ import { CrisisEscalation } from '@/components/CrisisEscalation';
 import type { CrisisResource } from '@/lib/crisis';
 
 /**
- * Live Call — the real-time spoken conversation with Elena.
+ * Live Call — the real-time spoken conversation with Freya.
  *
  * LiveVoiceChat has existed since a76cb8e but nothing rendered it: /therapy
  * imported the component and never used it, so a finished feature shipped
@@ -30,7 +30,7 @@ import type { CrisisResource } from '@/lib/crisis';
  * MEMORY RUNS BOTH WAYS HERE
  *
  * In: the system instruction comes from /api/live-context, which assembles the
- * same memory block /chat uses. Elena arrives on a call already knowing this
+ * same memory block /chat uses. Freya arrives on a call already knowing this
  * person.
  *
  * Out: when the call ends, the transcript is written to coach_sessions and
@@ -61,7 +61,7 @@ function LiveInner() {
   const persistenceQueueRef = useRef<Promise<void>>(Promise.resolve());
   const persistedTurnIdsRef = useRef(new Set<string>());
 
-  // The system instruction Elena starts the call with. Null while it loads.
+  // The system instruction Freya starts the call with. Null while it loads.
   const [instruction, setInstruction] = useState<string | null>(null);
   const [hasMemory, setHasMemory] = useState(false);
   const [contextFailed, setContextFailed] = useState(false);
@@ -87,7 +87,7 @@ function LiveInner() {
         setContextFailed(Boolean(json.contextPartial));
       } catch {
         if (cancelled) return;
-        // Elena without history is still Elena. LiveVoiceChat falls back to
+        // Freya without history is still Freya. LiveVoiceChat falls back to
         // ELENA_LIVE_PERSONA when the instruction is undefined, so the call
         // goes ahead — the user is told what was lost rather than blocked.
         setContextFailed(true);
@@ -104,7 +104,7 @@ function LiveInner() {
    *
    * Returning false tells LiveVoiceChat to stop the audio and close the
    * socket, which is the strongest thing available here — unlike /chat, the
-   * reply cannot be withheld, because Elena has already begun speaking by the
+   * reply cannot be withheld, because Freya has already begun speaking by the
    * time the turn is transcribed.
    *
    * A failed screening returns true. Losing the model classifier must not end
@@ -240,27 +240,27 @@ function LiveInner() {
 
   const loading = instruction === null;
 
-  // The voice Elena will speak with on this call, named on screen so the user
+  // The voice Freya will speak with on this call, named on screen so the user
   // recognises it before the call rather than during it. resolveVoice already
   // guarantees the id is one of VOICES, so the tone lookup always matches.
   const voiceId = resolveVoice(profile?.therapist_voice);
-  const voiceTone = VOICES.find((v) => v.id === voiceId)?.tone;
+  const voice = VOICES.find((v) => v.id === voiceId);
 
   return (
-    <AppShell title="Live Call" subtitle="Talk with Elena in real time">
+    <AppShell title="Talk to Freya" subtitle="A real conversation, out loud, whenever you need it">
       <div style={{ maxWidth: 560, margin: '0 auto', width: '100%' }}>
         {showTopUp && (
           <Banner>
             You are low on session minutes. Top up in{' '}
-            <strong style={{ color: COLORS.textPrimary }}>Settings</strong> to keep making
-            live calls.
+            <strong style={{ color: COLORS.textPrimary }}>Settings</strong> to keep talking
+            with Freya.
           </Banner>
         )}
 
         {contextFailed && (
           <Banner>
-            Elena could not load your history just now. The call will still work, but she
-            will not remember your past sessions this time.
+            Freya couldn&apos;t catch up on your history just now. You can still talk, but she
+            won&apos;t remember your past sessions this time.
           </Banner>
         )}
 
@@ -273,8 +273,9 @@ function LiveInner() {
             textAlign: 'center',
           }}
         >
-          Press start, allow the microphone, then just talk. Elena answers out loud and
-          you can cut in at any time. Minutes come off your plan while the call runs.
+          Tap call, allow your microphone, and just start talking. Freya listens, answers
+          out loud, and you can jump in whenever you like. Minutes come off your plan while
+          you talk.
         </div>
 
         {/*
@@ -305,11 +306,11 @@ function LiveInner() {
           >
             <Icon name="mic" size={14} color={COLORS.textMuted} />
             <span>
-              Elena&apos;s voice: <strong style={{ color: COLORS.textSecondary }}>{voiceId}</strong>
-              {voiceTone ? ` — ${voiceTone.toLowerCase()}` : ''}
+              Voice: <strong style={{ color: COLORS.textSecondary }}>{voice?.name ?? 'Freya'}</strong>
+              {voice ? ` — ${voice.tone.toLowerCase()}` : ''}
             </span>
             <Link
-              href="/settings#elena-voice"
+              href="/settings#therapist-voice"
               style={{ color: COLORS.blue, textDecoration: 'underline' }}
             >
               Change
@@ -341,9 +342,9 @@ function LiveInner() {
               style={{ marginTop: 3 }}
             />
             <span>
-              I agree that my microphone audio will be sent to Gemini for this live call,
-              that captions will be saved in my Sessions so Elena can remember them, and
-              that call time will be deducted from my plan.
+              I agree that my voice will be securely streamed to our voice provider (Google)
+              during this call, that captions will be saved in my Sessions so Freya can
+              remember them, and that call time will be deducted from my plan.
             </span>
           </label>
         )}
@@ -366,7 +367,7 @@ function LiveInner() {
               padding: '40px 0',
             }}
           >
-            Bringing Elena up to date...
+            Freya is catching up on how you&apos;ve been...
           </div>
         ) : (
           <LiveVoiceChat
@@ -399,8 +400,8 @@ function LiveInner() {
             }}
           >
             {hasMemory
-              ? 'Elena remembers your recent sessions and mood. This call is saved, so she will remember it too.'
-              : 'This is your first session with Elena. She will remember this call next time.'}
+              ? "Freya remembers your recent sessions and how you've been feeling. She'll remember this conversation too."
+              : "This is your first conversation with Freya. She'll remember it next time you talk."}
           </div>
         )}
 
@@ -413,7 +414,7 @@ function LiveInner() {
               textAlign: 'center',
             }}
           >
-            Last call: {Math.floor(lastCall / 60)}m {lastCall % 60}s
+            Your last conversation: {Math.floor(lastCall / 60)}m {lastCall % 60}s
             {saveState === 'saving' && ' — saving...'}
             {saveState === 'saved' && ' — saved to your sessions'}
             {saveState === 'failed' && ' — the call could not be saved'}

@@ -13,19 +13,19 @@ type NavItem = { href: string; label: string; icon: string };
 
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
-  { href: '/therapy', label: 'Reflect', icon: 'pulse' },
-  { href: '/chat', label: 'AI Chat', icon: 'chat' },
-  // Real-time spoken call with Elena, over the Gemini Multimodal Live API.
+  { href: '/therapy', label: 'Reflect Mood', icon: 'pulse' },
+  { href: '/chat', label: 'Chat with Therapist', icon: 'chat' },
+  // Real-time spoken call with Freya, over the Gemini Multimodal Live API.
   // The component was finished in a76cb8e and then rendered nowhere — /therapy
   // imported it and dropped it. /live is the page that finally shows it.
-  { href: '/live', label: 'Live Call', icon: 'phone' },
+  { href: '/live', label: 'Talk to Therapist', icon: 'phone' },
   // Feature 2, complete end to end since 15 August: consent, record or upload,
   // speaker-labelled transcript, and the I-5 analysis in /api/intent/analyse.
   // It was reachable here for two demos before it could finish, which was a
   // deliberate call and an uncomfortable one — a nav entry is a promise that
   // the thing behind it finishes.
-  { href: '/intent', label: 'Intent', icon: 'users' },
-  { href: '/trends', label: 'Journey', icon: 'trending-up' },
+  { href: '/intent', label: 'Intent Detector', icon: 'users' },
+  { href: '/trends', label: 'Healing Journey', icon: 'trending-up' },
   { href: '/history', label: 'Sessions', icon: 'time' },
   { href: '/settings', label: 'Settings', icon: 'settings' },
 ];
@@ -81,11 +81,13 @@ export function AppNavigation({ children }: { children: React.ReactNode }) {
           left: 0,
           height: '100vh',
           width: isMobile ? 260 : SIDEBAR_WIDTH,
-          background: COLORS.card,
+          // A faint brand wash at the top fading into white gives the rail
+          // depth without introducing a new colour.
+          background: `linear-gradient(180deg, rgba(37,99,235,0.045) 0%, ${COLORS.card} 220px)`,
           borderRight: `1px solid ${COLORS.cardBorder}`,
           display: 'flex',
           flexDirection: 'column',
-          padding: '24px 16px',
+          padding: '22px 14px 16px',
           zIndex: 40,
           transform: showSidebar ? 'translateX(0)' : 'translateX(-100%)',
           transition: 'transform 0.25s ease',
@@ -101,8 +103,8 @@ export function AppNavigation({ children }: { children: React.ReactNode }) {
           style={{
             display: 'flex',
             alignItems: 'center',
-            padding: '4px 8px 18px',
-            marginBottom: 8,
+            padding: '4px 10px 20px',
+            marginBottom: 14,
             borderBottom: `1px solid ${COLORS.cardBorder}`,
             textDecoration: 'none',
           }}
@@ -110,7 +112,19 @@ export function AppNavigation({ children }: { children: React.ReactNode }) {
           <Logo size={24} />
         </Link>
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: 4, flex: 1 }}>
+        <div
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            letterSpacing: '0.12em',
+            textTransform: 'uppercase',
+            color: COLORS.textMuted,
+            padding: '0 12px 8px',
+          }}
+        >
+          Menu
+        </div>
+        <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, overflowY: 'auto' }}>
           {NAV.map((item) => {
             const active = !!pathname && pathname.startsWith(item.href);
             return (
@@ -126,28 +140,33 @@ export function AppNavigation({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div
-          style={{
-            borderTop: `1px solid ${COLORS.cardBorder}`,
-            paddingTop: 12,
-            marginTop: 12,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ marginTop: 12 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: 10,
+              borderRadius: 16,
+              background: COLORS.surface,
+              border: `1px solid ${COLORS.cardBorder}`,
+            }}
+          >
             {profile?.avatar_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={profile.avatar_url}
                 alt="avatar"
-                style={{ width: 34, height: 34, borderRadius: 10, objectFit: 'cover', border: `1px solid ${COLORS.cardBorder}` }}
+                style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', border: `2px solid ${COLORS.white}`, boxShadow: '0 0 0 1px rgba(37,99,235,0.25)' }}
               />
             ) : (
               <div
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
                   background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+                  boxShadow: '0 4px 12px -4px rgba(37,99,235,0.5)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -191,11 +210,13 @@ export function AppNavigation({ children }: { children: React.ReactNode }) {
             <button
               onClick={handleSignOut}
               title="Sign out"
+              aria-label="Sign out"
+              className="rv-icon-btn"
               style={{
                 width: 30,
                 height: 30,
-                borderRadius: 8,
-                background: COLORS.surface,
+                borderRadius: 9,
+                background: COLORS.card,
                 border: `1px solid ${COLORS.cardBorder}`,
                 display: 'flex',
                 alignItems: 'center',
@@ -216,7 +237,9 @@ export function AppNavigation({ children }: { children: React.ReactNode }) {
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(17,17,24,0.35)',
+            backdropFilter: 'blur(4px)',
+            WebkitBackdropFilter: 'blur(4px)',
             zIndex: 30,
           }}
         />
@@ -259,9 +282,9 @@ export function AppShell({
             position: 'sticky',
             top: 0,
             zIndex: 20,
-            background: 'rgba(247,247,249,0.92)',
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
+            background: 'rgba(247,247,249,0.8)',
+            backdropFilter: 'saturate(180%) blur(20px)',
+            WebkitBackdropFilter: 'saturate(180%) blur(20px)',
             borderBottom: `1px solid ${COLORS.cardBorder}`,
             padding: isMobile ? '12px 16px' : '14px 32px',
             display: 'flex',
@@ -273,6 +296,7 @@ export function AppShell({
             <button
               onClick={openSidebar}
               aria-label="Open menu"
+              className="rv-icon-btn"
               style={{
                 width: 40,
                 height: 40,
@@ -329,6 +353,7 @@ export function AppShell({
               href="/settings"
               prefetch
               aria-label="Settings"
+              className="rv-icon-btn"
               style={{
                 width: 40,
                 height: 40,
@@ -377,13 +402,7 @@ function SidebarItem({
   onClick: () => void;
 }) {
   const [hover, setHover] = useState(false);
-  const isActive = active;
-  const bg = isActive
-    ? 'linear-gradient(135deg, rgba(37, 99, 235, 0.12), rgba(14, 165, 233, 0.1))'
-    : hover
-    ? COLORS.cardBorder
-    : 'transparent';
-  const color = isActive || hover ? COLORS.textPrimary : COLORS.textSecondary;
+  const color = active || hover ? COLORS.textPrimary : COLORS.textSecondary;
 
   return (
     <Link
@@ -394,24 +413,63 @@ function SidebarItem({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
+        position: 'relative',
         display: 'flex',
         alignItems: 'center',
-        gap: 12,
+        gap: 11,
         width: '100%',
-        padding: '10px 12px',
+        padding: '7px 10px',
         borderRadius: 12,
-        background: bg,
-        border: isActive ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid transparent',
+        background: active ? COLORS.card : hover ? 'rgba(17,17,24,0.04)' : 'transparent',
+        boxShadow: active
+          ? '0 1px 2px rgba(17,17,24,0.05), 0 6px 16px -8px rgba(37,99,235,0.35)'
+          : 'none',
+        border: active ? `1px solid ${COLORS.cardBorder}` : '1px solid transparent',
         color,
-        fontSize: 14,
-        fontWeight: 600,
+        fontSize: 13.5,
+        fontWeight: active ? 700 : 600,
         textAlign: 'left',
         textDecoration: 'none',
-        transition: 'background 0.15s ease, color 0.15s ease',
+        transition: 'background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease',
       }}
     >
-      <Icon name={icon} size={18} color={color} />
-      <span>{label}</span>
+      {/* Brand accent rail on the active item. */}
+      {active && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            left: -14,
+            top: 10,
+            bottom: 10,
+            width: 3,
+            borderRadius: '0 3px 3px 0',
+            background: `linear-gradient(180deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+          }}
+        />
+      )}
+      <span
+        aria-hidden="true"
+        style={{
+          width: 30,
+          height: 30,
+          borderRadius: 9,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: active
+            ? `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`
+            : hover
+            ? COLORS.card
+            : 'transparent',
+          boxShadow: active ? '0 4px 10px -4px rgba(37,99,235,0.6)' : 'none',
+          transition: 'background 0.18s ease',
+        }}
+      >
+        <Icon name={icon} size={16} color={active ? COLORS.white : color} />
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </Link>
   );
 }

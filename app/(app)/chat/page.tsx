@@ -37,6 +37,33 @@ function buildOpener(results: AnalysisResult) {
   return `Thanks for checking in today. Your mood score is ${score} — tell me, how are you really feeling right now?`;
 }
 
+// Her initial beside each reply, so the conversation reads as one with a
+// person rather than with a text box.
+function FreyaAvatar() {
+  return (
+    <div
+      aria-hidden="true"
+      title="Freya"
+      style={{
+        width: 28,
+        height: 28,
+        flexShrink: 0,
+        borderRadius: '50%',
+        background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
+        color: COLORS.white,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: 'var(--font-syne)',
+        fontSize: 13,
+        fontWeight: 800,
+      }}
+    >
+      F
+    </div>
+  );
+}
+
 function ChatInner() {
   const router = useRouter();
   const [results, setResults] = useState<AnalysisResult | null>(null);
@@ -226,11 +253,11 @@ function ChatInner() {
 
   return (
     <AppShell
-      title="AI Coach Chat"
+      title="Talk to Your Therapist"
       subtitle={
         contextWhen
-          ? `From your check-in ${contextWhen}`
-          : 'From your last check-in'
+          ? `Freya is here for you · picking up from your check-in ${contextWhen}`
+          : 'Freya is here for you · picking up from your last check-in'
       }
       contentMaxWidth={920}
       contentPadding="0"
@@ -308,9 +335,12 @@ function ChatInner() {
               style={{
                 display: 'flex',
                 justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start',
+                alignItems: 'flex-end',
+                gap: 8,
                 marginBottom: 12,
               }}
             >
+              {m.role !== 'user' && <FreyaAvatar />}
               <div
                 style={{
                   maxWidth: '78%',
@@ -349,7 +379,7 @@ function ChatInner() {
                   animation: 'spin 0.8s linear infinite',
                 }}
               />
-              <span style={{ fontSize: 13, color: COLORS.textMuted }}>Thinking...</span>
+              <span style={{ fontSize: 13, color: COLORS.textMuted }}>Freya is typing...</span>
             </div>
           )}
         </div>
@@ -385,7 +415,7 @@ function ChatInner() {
                 send();
               }
             }}
-            placeholder="Share what's on your mind…"
+            placeholder="Tell Freya what's on your mind…"
             rows={1}
             maxLength={500}
             style={{

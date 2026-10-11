@@ -8,10 +8,10 @@ type Props = {
 };
 
 const FEATURES_PRO = [
-  { icon: '🎙️', text: '150 minutes of AI voice analysis' },
+  { icon: '🎙️', text: '150 minutes of voice check-ins and calls with Freya' },
   { icon: '🧬', text: 'Mood, energy & stress decoded from voice' },
   { icon: '📈', text: 'Personal wellness trends & early burnout alerts' },
-  { icon: '💬', text: 'Unlimited AI therapy chat sessions' },
+  { icon: '💬', text: 'Unlimited conversations with Freya, your therapist' },
   { icon: '📊', text: 'Weekly mood reports & streak tracking' },
   { icon: '🔒', text: 'Private & encrypted — audio deleted after analysis' },
 ];

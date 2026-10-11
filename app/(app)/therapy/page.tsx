@@ -783,7 +783,7 @@ function TherapyInner() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <Icon name="mic" size={16} color={COLORS.blue} />
               <span style={{ fontSize: 12, fontWeight: 700, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.6 }}>
-                Reveal Voice AI
+                What Freya heard
               </span>
             </div>
 
@@ -1015,8 +1015,8 @@ function TherapyInner() {
             <Card style={{ marginBottom: 0 }}>
               <CardTitle>Next Step</CardTitle>
               <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-                Talk to your AI coach about anything that came up, or view how today fits into
-                your weekly trend.
+                Talk to Freya about anything that came up, or see how today fits into
+                your week.
               </div>
             </Card>
           )}
@@ -1074,7 +1074,7 @@ function TherapyInner() {
               }}
             >
               <Icon name="chat" size={16} color={COLORS.textSecondary} />
-              Talk to Coach
+              Talk to Freya
             </button>
 
             <button
@@ -1118,7 +1118,7 @@ function TherapyInner() {
 
   if (phase === 'getting_question') {
     return (
-      <AppShell title="Reflect — Deep Understanding" subtitle="Therapist Elena is listening">
+      <AppShell title="Reflect — Deep Understanding" subtitle="Therapist Freya is listening">
         <div
           style={{
             minHeight: '60vh',
@@ -1132,7 +1132,7 @@ function TherapyInner() {
             <Logo size={38} />
           </div>
           <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, marginTop: 32, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
-            Elena is tuning into your voice...
+            Freya is tuning into your voice...
           </div>
           <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
             Preparing 1 targeted follow-up question to start your session
@@ -1144,7 +1144,7 @@ function TherapyInner() {
 
   if (phase === 'deep_conversation') {
     return (
-      <AppShell title="Reflect — Deep Understanding" subtitle="Interactive conversation with Elena">
+      <AppShell title="Reflect — Deep Understanding" subtitle="Interactive conversation with Freya">
         <div
           style={{
             background: COLORS.card,
@@ -1191,7 +1191,7 @@ function TherapyInner() {
               </div>
               <div>
                 <div style={{ fontSize: 15, fontWeight: 800, color: COLORS.textPrimary, fontFamily: 'var(--font-syne)' }}>
-                  Elena — Your Safe Space
+                  Freya — Your Safe Space
                 </div>
                 <div style={{ fontSize: 12, color: COLORS.blue, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span>Not just heard. Understood.</span>
@@ -1277,7 +1277,7 @@ function TherapyInner() {
                         }}
                       >
                         <span style={{ fontSize: 11, fontWeight: 800, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                          Elena
+                          Freya
                         </span>
                       </div>
                     )}
@@ -1306,7 +1306,7 @@ function TherapyInner() {
                 }}
               >
                 <div className="animate-pulse-soft" style={{ fontSize: 14 }}>🧠</div>
-                <span>Elena is listening and reflecting...</span>
+                <span>Freya is listening and reflecting...</span>
               </div>
             )}
             <div ref={chatEndRef} />
@@ -1332,7 +1332,7 @@ function TherapyInner() {
               >
                 <div>
                   <strong style={{ color: COLORS.blue, display: 'block' }}>✨ Session Complete (3/3 Questions Answered)</strong>
-                  <span style={{ fontSize: 12, color: COLORS.textSecondary }}>Elena has gathered full emotional clarity for your session analysis. Generating results...</span>
+                  <span style={{ fontSize: 12, color: COLORS.textSecondary }}>Freya has gathered full emotional clarity for your session analysis. Generating results...</span>
                 </div>
               </div>
             )}
@@ -1384,7 +1384,7 @@ function TherapyInner() {
                   ? '3/3 Questions completed — Generating full results...'
                   : isListeningVoice
                   ? 'Listening... Speak now...'
-                  : 'Type or speak your answer to Elena...'
+                  : 'Type or speak your answer to Freya...'
               }
               disabled={
                 isTherapistThinking ||
@@ -1548,7 +1548,7 @@ function TherapyInner() {
           {isRecording ? (
             <>Speak freely — anything on your mind.<br />We&apos;ll stop automatically at 60 seconds.</>
           ) : reflectMode === 'deep' ? (
-            <><strong>Deep Understanding Mode</strong><br />Record your voice memo. Once finished, AI Therapist will ask 1 deep targeted question before decoding your results.</>
+            <><strong>Deep Understanding Mode</strong><br />Record your voice memo. Once you&apos;re done, Freya will ask you one thoughtful follow-up question before sharing what she noticed.</>
           ) : (
             <>Talk about how you&apos;re feeling today.<br />Anything on your mind.</>
           )}
@@ -2146,7 +2146,7 @@ function buildPersonalNotes(
     if (sameMode && current.detected_mode) {
       notes.push({
         icon: 'pulse',
-        text: `Your last few sessions have all been "${current.detected_mode}" — there's a clear pattern. Worth sharing with your AI Coach to dig into what's driving it.`,
+        text: `Your last few sessions have all been "${current.detected_mode}" — there's a clear pattern. Worth talking through with Freya to understand what's driving it.`,
       });
     }
   }

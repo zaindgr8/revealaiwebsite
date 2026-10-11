@@ -46,7 +46,7 @@ html, body {
   padding: 0;
   background: var(--color-background);
   color: var(--color-text-primary);
-  font-family: var(--font-jakarta), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+  font-family: var(--font-dm), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -320,5 +320,119 @@ input:focus, textarea:focus, button:focus {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* ── Premium polish ───────────────────────────────────────────────
+   Shared by Card, the sidebar and the dashboard. Same brand palette;
+   depth comes from layered shadows and hairline borders, not new colours. */
+
+:root {
+  --shadow-card: 0 1px 2px rgba(17, 17, 24, 0.04), 0 4px 16px -4px rgba(17, 17, 24, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(17, 17, 24, 0.04), 0 16px 32px -12px rgba(37, 99, 235, 0.18);
+  --shadow-brand: 0 12px 32px -10px rgba(37, 99, 235, 0.45);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Keyboard users lost every focus indicator to the blanket outline reset
+   above. Restore one for keyboard focus only, so mouse clicks stay clean. */
+a:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-blue);
+  outline-offset: 2px;
+}
+
+.rv-card {
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.25s var(--ease-out), transform 0.25s var(--ease-out),
+    border-color 0.25s var(--ease-out);
+}
+
+.rv-lift {
+  transition: box-shadow 0.25s var(--ease-out), transform 0.25s var(--ease-out),
+    border-color 0.25s var(--ease-out), filter 0.25s var(--ease-out);
+}
+.rv-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(37, 99, 235, 0.22) !important;
+}
+.rv-lift:active {
+  transform: translateY(0);
+}
+
+.rv-cta {
+  box-shadow: var(--shadow-brand);
+  transition: transform 0.25s var(--ease-out), box-shadow 0.25s var(--ease-out);
+}
+.rv-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 18px 40px -12px rgba(37, 99, 235, 0.55);
+}
+.rv-cta:hover .rv-cta-arrow {
+  transform: translateX(3px);
+}
+.rv-cta-arrow {
+  transition: transform 0.25s var(--ease-out);
+}
+
+.rv-icon-btn {
+  transition: background 0.2s ease, color 0.2s ease;
+}
+.rv-icon-btn:hover {
+  background: rgba(17, 17, 24, 0.06) !important;
+}
+
+@keyframes rv-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rv-rise {
+  animation: rv-rise 0.55s var(--ease-out) both;
+}
+
+@keyframes rv-shimmer {
+  from {
+    background-position: -400px 0;
+  }
+  to {
+    background-position: 400px 0;
+  }
+}
+.rv-skeleton {
+  background: linear-gradient(90deg, #eeeef3 0%, #f7f7fa 50%, #eeeef3 100%);
+  background-size: 800px 100%;
+  animation: rv-shimmer 1.4s linear infinite;
+  border-radius: 10px;
+}
+
+@keyframes rv-breathe {
+  0%, 100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rv-rise,
+  .rv-skeleton,
+  .rv-wave span {
+    animation: none !important;
+  }
+  .rv-lift:hover,
+  .rv-cta:hover {
+    transform: none;
   }
 }

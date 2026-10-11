@@ -16,7 +16,7 @@ import { CRISIS_RESOURCES, screenMessage } from '@/lib/crisis';
  *
  * WHAT THIS CAN AND CANNOT DO
  *
- * It cannot stop Elena from starting to answer. By the time a turn has been
+ * It cannot stop Freya from starting to answer. By the time a turn has been
  * transcribed, the model is already speaking. What it does is cut the call
  * short — the caller stops the audio, closes the socket and shows the support
  * resources — usually within a second or two of the sentence that triggered

@@ -5,10 +5,10 @@ import { Icon } from '@/components/Icon';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
 import { updateTherapistVoice } from '@/lib/profile';
-import { VOICES, resolveVoice } from '@/lib/voices';
+import { DEFAULT_VOICE, VOICES, resolveVoice } from '@/lib/voices';
 
 /**
- * Lets the user choose which of Google's prebuilt voices Elena speaks with on
+ * Lets the user choose which of Google's prebuilt voices Freya speaks with on
  * a live call.
  *
  * The sample is played from /api/voice-preview, not /api/tts, because only the
@@ -83,7 +83,8 @@ export function TherapistVoicePicker() {
     try {
       await updateTherapistVoice(user.id, selected);
       await refreshProfile();
-      setMessage('Saved. Elena will use this voice on your next call.');
+      const name = VOICES.find((v) => v.id === selected)?.name ?? 'Freya';
+      setMessage(`Saved. You'll hear ${name}'s voice next time you talk to Freya.`);
     } catch (err) {
       setError((err as Error).message || 'Could not save your choice');
     } finally {
@@ -117,7 +118,8 @@ export function TherapistVoicePicker() {
         >
           {VOICES.map((v) => (
             <option key={v.id} value={v.id}>
-              {v.id} — {v.tone}
+              {v.name} — {v.tone.toLowerCase()}
+              {v.id === DEFAULT_VOICE ? ' (Freya’s own voice)' : ''}
             </option>
           ))}
         </select>

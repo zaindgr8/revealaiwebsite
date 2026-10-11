@@ -195,7 +195,7 @@ export function buildMemoryBlock(
   // mentioned their father was ill.
   //
   // The heading is doing real work. A check-in is recorded alone; a
-  // conversation is a dialogue with Elena. Under one heading the model will say
+  // conversation is a dialogue with Freya. Under one heading the model will say
   // "we talked about your sister" about a solo recording, which is a factual
   // error the person catches immediately — and it is exactly the failure this
   // whole block exists to prevent: sounding like it remembers while not

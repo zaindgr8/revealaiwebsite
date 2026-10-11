@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     }
 
     const transcript = (messages ?? [])
-      .map((m) => `${m.role === 'user' ? 'User' : 'Elena'}: ${m.content}`)
+      .map((m) => `${m.role === 'user' ? 'User' : 'Freya'}: ${m.content}`)
       .join('\n');
 
     const res = await fetch(`${GEMINI_URL}?key=${apiKey}`, {

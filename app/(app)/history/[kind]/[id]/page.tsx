@@ -162,8 +162,8 @@ function DetailInner() {
         data.kind === 'checkin'
           ? 'Voice check-in'
           : data.kind === 'live'
-          ? 'Live call'
-          : 'Chat'
+          ? 'Call with Freya'
+          : 'Chat with Freya'
       }
       subtitle={`${fmtFullDate(created)} · ${fmtTime(created)}`}
       contentMaxWidth={860}
@@ -357,7 +357,7 @@ function ChatBody({
                     marginBottom: 3,
                   }}
                 >
-                  {m.role === 'user' ? 'You' : 'Elena'}
+                  {m.role === 'user' ? 'You' : 'Freya'}
                 </div>
                 <div
                   style={{

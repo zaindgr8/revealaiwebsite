@@ -1139,7 +1139,7 @@ export function computeEarlyWarnings(
         title: `Repeated "${modes[0]}" pattern`,
         detail: `Your last 3 check-ins have all read as "${modes[0]}". There's a clear thread here worth understanding.`,
         rule: 'Triggers when the same negative mode (anxious/sad/angry/venting) is detected for 3 consecutive sessions.',
-        recommendation: `Open AI Coach Chat and dig into what's driving the "${modes[0]}" pattern.`,
+        recommendation: `Talk to Freya and explore what's driving the "${modes[0]}" pattern.`,
       });
     }
   }

@@ -115,7 +115,7 @@ export default function LiveVoiceChat({
 }: LiveVoiceChatProps) {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [status, setStatus] = useState<string>('Ready for Live Call');
+  const [status, setStatus] = useState<string>('Freya is ready when you are');
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
@@ -548,7 +548,7 @@ export default function LiveVoiceChat({
     previousUserTailRef.current = '';
     lastScreenedTextRef.current = '';
     setIsConnecting(true);
-    setStatus('Initializing audio & requesting mic...');
+    setStatus('Getting your microphone ready...');
 
     // 1. Synchronously create & resume AudioContext inside the user gesture handler
     try {
@@ -579,14 +579,14 @@ export default function LiveVoiceChat({
     } catch (err) {
       console.error('[LiveVoiceChat] Microphone permission denied:', err);
       setIsConnecting(false);
-      setStatus('Microphone Access Denied');
-      setErrorMsg('Please allow microphone permissions in your browser to start the live call.');
+      setStatus('Microphone access needed');
+      setErrorMsg('Please allow microphone permissions in your browser to talk with Freya.');
       return;
     }
 
     // 3. Fetch a one-use ephemeral credential. The permanent Gemini key stays
     // server-side and this endpoint also re-checks the caller's entitlement.
-    setStatus('Preparing secure connection...');
+    setStatus('Calling Freya...');
     let ephemeralToken = '';
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -598,16 +598,16 @@ export default function LiveVoiceChat({
         const body = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(
           res.status === 401
-            ? 'Your session expired. Please sign in again to start a live call.'
+            ? 'Your session expired. Please sign in again to talk with Freya.'
             : res.status === 402
               ? 'You have no live-call time available. Add minutes in Settings.'
-              : body.error || 'Live Call is temporarily unavailable.'
+              : body.error || 'Freya is unavailable for a moment. Please try again shortly.'
         );
       }
       const data = (await res.json()) as { token?: string; model?: string };
       ephemeralToken = data.token ?? '';
       if (!ephemeralToken || data.model !== GEMINI_LIVE_MODEL) {
-        throw new Error('The secure Live Call credential was invalid.');
+        throw new Error('We could not open a secure line to Freya. Please try again.');
       }
 
       // Create the durable row before any audio leaves the browser. This makes
@@ -618,7 +618,7 @@ export default function LiveVoiceChat({
       console.error('[LiveVoiceChat] Token fetch error:', err);
       cleanup();
       setStatus('Could not start call');
-      setErrorMsg((err as Error).message || 'Live Call could not start.');
+      setErrorMsg((err as Error).message || 'The call could not start.');
       return;
     }
 
@@ -626,7 +626,7 @@ export default function LiveVoiceChat({
     // the latest resumption handle and the same one-use token; Google does not
     // count a resumed session as another use.
     const connectSocket = (resumeHandle?: string) => {
-      setStatus(resumeHandle ? 'Reconnecting securely...' : 'Connecting securely...');
+      setStatus(resumeHandle ? 'Reconnecting you with Freya...' : 'Connecting you with Freya...');
       const wsUrl =
         'wss://generativelanguage.googleapis.com/ws/' +
         'google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContentConstrained' +
@@ -641,7 +641,7 @@ export default function LiveVoiceChat({
       let messageQueue: Promise<void> = Promise.resolve();
       if (connectTimerRef.current) clearTimeout(connectTimerRef.current);
       connectTimerRef.current = setTimeout(() => {
-        setErrorMsg('The secure Live Call connection timed out. Please try again.');
+        setErrorMsg('The call took too long to connect. Please try again.');
         ws.close();
       }, 15_000);
 
@@ -656,7 +656,7 @@ export default function LiveVoiceChat({
                 voiceConfig: {
                   prebuiltVoiceConfig: {
                     // A Google voice id, not the persona's name. The persona
-                    // is Elena in every voice. This was hard-coded to
+                    // is Freya in every voice. This was hard-coded to
                     // 'Despina'; it now follows the user's choice in Settings,
                     // and resolveVoice keeps a retired id from reaching Google.
                     voiceName: resolveVoice(voiceName),
@@ -699,7 +699,7 @@ export default function LiveVoiceChat({
             reconnectingRef.current = false;
             setIsConnecting(false);
             setIsConnected(true);
-            setStatus('Connected — speaking with Elena');
+            setStatus('On a call with Freya');
             void startMicCapture(ws, stream);
             if (!timerIntervalRef.current) {
               timerIntervalRef.current = setInterval(() => {
@@ -716,7 +716,7 @@ export default function LiveVoiceChat({
           if (response.goAway) {
             reconnectingRef.current = Boolean(resumptionHandleRef.current);
             if (!reconnectingRef.current) {
-              setErrorMsg('The Live Call reached its connection limit. Please start another call.');
+              setErrorMsg('This call reached its time limit. You can call Freya again any time.');
             }
             ws.close(1000, reconnectingRef.current ? 'resume' : 'limit');
             return;
@@ -724,13 +724,13 @@ export default function LiveVoiceChat({
 
           const serverContent = response.serverContent;
 
-          // Handle interruption if the user spoke over Elena
+          // Handle interruption if the user spoke over Freya
           if (serverContent?.interrupted) {
             stopAudioQueue();
             finaliseRole('assistant');
           }
 
-          // What the user said, and what Elena said back. Both are separate
+          // What the user said, and what Freya said back. Both are separate
           // from the audio stream below — the transcript is a side channel,
           // not the model's response parts.
           if (serverContent?.inputTranscription?.text) {
@@ -745,7 +745,7 @@ export default function LiveVoiceChat({
             if (finaliseTimerRef.current) scheduleTurnFinalisation();
           }
 
-          // Elena has started answering, so the user has stopped talking. This
+          // Freya has started answering, so the user has stopped talking. This
           // is the earliest moment their whole turn is known, and screening it
           // here rather than at turnComplete cuts a crisis call short by
           // however long her answer would have taken to finish.
@@ -788,7 +788,7 @@ export default function LiveVoiceChat({
         if (!event.wasClean || event.code !== 1000) {
           console.warn('[LiveVoiceChat] Connection closed abnormally:', event.code, event.reason);
           setErrorMsg(
-            `Live Call disconnected (code ${event.code}${event.reason ? `: ${event.reason}` : ''}). The conversation was saved.`
+            `The call dropped (code ${event.code}${event.reason ? `: ${event.reason}` : ''}). The conversation was saved.`
           );
         }
         finishConversationRef.current('disconnected');
@@ -796,7 +796,7 @@ export default function LiveVoiceChat({
 
       ws.onerror = (err) => {
         console.error('[LiveVoiceChat] WebSocket error:', err);
-        setErrorMsg('The Live Call connection failed. The conversation will be saved.');
+        setErrorMsg('The call lost its connection. Your conversation will be saved.');
         ws.close();
       };
     };
@@ -1025,9 +1025,20 @@ export default function LiveVoiceChat({
               justifyContent: 'center',
             }}
           >
-            {/* The emoji rendered grey on every platform and could not take a
-                brand colour. The icon can. */}
-            <Icon name="mic" size={38} color={COLORS.blue} />
+            {/* Her initial rather than a microphone: the call is with a person,
+                not a device. */}
+            <span
+              aria-hidden="true"
+              style={{
+                fontFamily: 'var(--font-syne)',
+                fontSize: 42,
+                fontWeight: 800,
+                color: COLORS.blue,
+                lineHeight: 1,
+              }}
+            >
+              F
+            </span>
           </div>
         </div>
 
@@ -1041,10 +1052,10 @@ export default function LiveVoiceChat({
             marginBottom: 4,
           }}
         >
-          Elena Voice Companion
+          Freya
         </h3>
         <p style={{ fontSize: 13, color: COLORS.textSecondary, textAlign: 'center', margin: 0 }}>
-          Gemini Live • {selectedVoiceTone} voice
+          Your therapist · {selectedVoiceTone.toLowerCase()} voice
         </p>
       </div>
 
@@ -1079,7 +1090,7 @@ export default function LiveVoiceChat({
             type="button"
             onClick={startConversation}
             disabled={isConnecting || Boolean(disabledReason)}
-            aria-label="Start live call"
+            aria-label="Call Freya"
             title={disabledReason}
             style={{
               background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
@@ -1100,7 +1111,7 @@ export default function LiveVoiceChat({
             }}
           >
             <Icon name={isConnecting ? 'time' : 'phone'} size={17} color={COLORS.white} />
-            <span>{isConnecting ? 'Connecting...' : 'Start Live Call'}</span>
+            <span>{isConnecting ? 'Connecting...' : 'Call Freya'}</span>
           </button>
         ) : (
           <>
@@ -1131,7 +1142,7 @@ export default function LiveVoiceChat({
             <button
               type="button"
               onClick={() => finishConversation('user')}
-              aria-label="End live call"
+              aria-label="End call"
               style={{
                 // One flat brand red. The old gradient ended on a shade the
                 // palette does not define.
@@ -1225,7 +1236,7 @@ export default function LiveVoiceChat({
                     color: m.role === 'user' ? COLORS.sky : COLORS.blue,
                   }}
                 >
-                  {m.role === 'user' ? 'You: ' : 'Elena: '}
+                  {m.role === 'user' ? 'You: ' : 'Freya: '}
                 </span>
                 <span>{m.content}</span>
               </div>

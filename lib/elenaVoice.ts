@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Elena Voice Synthesis Helper
- * Persona: Elena, the therapist named everywhere else in the product.
+ * Freya Voice Synthesis Helper
+ * Persona: Freya, the therapist named everywhere else in the product.
  * The file and the functions used to say 'Despina', which is a Google voice
  * id and not a character — it made the persona look like two people.
  * Uses neural AI audio playback (/api/tts) for authentic, warm human voice sound.

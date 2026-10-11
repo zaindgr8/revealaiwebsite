@@ -58,7 +58,7 @@ function SettingsInner() {
   }, [profile, user]);
 
   /*
-    Scroll to the card a fragment names, for example /settings#elena-voice
+    Scroll to the card a fragment names, for example /settings#therapist-voice
     from the Live Call page.
 
     The browser does this itself, but it does it before this client page has
@@ -397,7 +397,7 @@ function SettingsInner() {
           let planName = 'Free Trial';
           let planPrice = '$0 (Free)';
           let expiryText = `${daysLeft} days remaining`;
-          let detailsText = 'Test AI-powered therapy and voice wellness insights';
+          let detailsText = 'Get to know Freya and your voice wellness insights';
 
           if (subStatus === 'active') {
             planName = 'Premium Plan';
@@ -408,7 +408,7 @@ function SettingsInner() {
             planName = 'Plan Expired';
             planPrice = '$12 / month';
             expiryText = 'Subscription inactive';
-            detailsText = 'Subscribe to reactivate your AI therapy access';
+            detailsText = 'Subscribe to keep talking with Freya';
           }
 
           return (
@@ -559,15 +559,15 @@ function SettingsInner() {
       </Card>
 
       {/*
-        Which voice Elena speaks with on a live call.
+        Which voice Freya speaks with on a live call.
 
         Sits next to "Your Voice" on purpose, and is deliberately titled so the
         two cannot be confused: that card is the user's own voice sample, used
         to tell speakers apart in a recording. This one is the therapist's
         voice. Same word, opposite meaning.
       */}
-      <Card id="elena-voice" style={{ marginTop: 14 }}>
-        <SectionTitle>Elena&apos;s Voice</SectionTitle>
+      <Card id="therapist-voice" style={{ marginTop: 14 }}>
+        <SectionTitle>Your Therapist&apos;s Voice</SectionTitle>
         <TherapistVoicePicker />
         <p
           style={{
@@ -577,9 +577,9 @@ function SettingsInner() {
             marginTop: 12,
           }}
         >
-          Choose how Elena sounds on a live call. Only the voice changes — she is
-          the same Elena whichever one you pick. A saved change applies to your
-          next call, not to one already running.
+          Pick the voice that feels most comfortable to talk to when you call Freya.
+          Hit &ldquo;Hear it&rdquo; to listen first. Your choice applies from your next
+          conversation.
         </p>
       </Card>
 
