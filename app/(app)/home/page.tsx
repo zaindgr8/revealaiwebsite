@@ -190,13 +190,13 @@ function HomeInner() {
                 Haven&apos;t heard from you today
               </div>
               <div style={{ fontSize: 12, color: COLORS.textSecondary, marginTop: 2 }}>
-                Want to check in and see how your voice is sounding?
+                Want to talk with Freya and see how you&apos;re doing?
               </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
             <button
-              onClick={() => router.push('/therapy')}
+              onClick={() => router.push('/live')}
               className="rv-cta"
               style={{
                 background: `linear-gradient(135deg, ${COLORS.gradientStart}, ${COLORS.gradientEnd})`,
@@ -304,7 +304,7 @@ function HomeInner() {
       >
         {/* Daily Check-In */}
         <button
-          onClick={() => router.push('/therapy')}
+          onClick={() => router.push('/live')}
           className="rv-cta"
           style={{
             textAlign: 'left',
@@ -358,7 +358,7 @@ function HomeInner() {
               <div style={{ fontSize: 13.5, color: 'rgba(255,255,255,0.86)', lineHeight: 1.5 }}>
                 {stats?.doneToday
                   ? `Mood ${stats.latestMood} · Feeling ${stats.latestMode}`
-                  : 'Record 60 seconds — we decode your mood & energy'}
+                  : 'Talk with Freya — we decode your mood & energy'}
               </div>
               <div
                 style={{
@@ -1039,7 +1039,7 @@ function NeedsMoreData({ metric, value }: { metric: string; value: number }) {
       }}
     >
       <strong style={{ color: COLORS.textPrimary }}>{value} / 100</strong>
-      One saved {metric} score. Complete another Reflect to reveal a trend.
+      One saved {metric} score. Talk with Freya again to reveal a trend.
     </div>
   );
 }

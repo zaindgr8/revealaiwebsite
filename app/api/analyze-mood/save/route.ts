@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { REFLECT_GEMINI_MODEL } from '@/prompts/checkIn';
+import { insertTherapySession } from '@/lib/therapy-session-row';
 
 const ALLOWED_MODES = new Set([
   'calm',
@@ -99,6 +100,13 @@ export async function POST(req: NextRequest) {
     narrative_type: ALLOWED_NARRATIVES.has(narrativeValue) ? narrativeValue : 'present',
     readiness_score: readiness,
     readiness_note: optionalText(result.readiness_note),
+    // Set when the result came from a live call (/api/analyze-call).
+    ...(typeof result.coach_session_id === 'string' && result.coach_session_id
+      ? { coach_session_id: result.coach_session_id }
+      : {}),
+    ...(result.call_shift && typeof result.call_shift === 'object'
+      ? { call_shift: result.call_shift }
+      : {}),
   };
 
   const db = createClient(
@@ -106,7 +114,7 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { global: { headers: { Authorization: `Bearer ${token}` } } }
   );
-  const { error } = await db.from('therapy_sessions').insert(sessionData);
+  const error = await insertTherapySession(db, sessionData);
   if (error) {
     console.error(`[analyze-mood/save] retry failed for ${user.id}: ${error.code} ${error.message}`);
     return NextResponse.json({ error: error.message, saved: false }, { status: 500 });

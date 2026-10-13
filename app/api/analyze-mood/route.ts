@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { SYSTEM_PROMPT, ANALYSIS_SCHEMA, REFLECT_GEMINI_MODEL } from '@/prompts/checkIn';
 import { AnalysisValidationError, validateAnalysis, transcriptSpeechRate } from '@/lib/mood-analysis';
+import {
+  insertTherapySession,
+  makeCrisisContactLocationSafe,
+  normaliseMode,
+  normalisePace,
+  normaliseRecommendations,
+} from '@/lib/therapy-session-row';
 
 export const maxDuration = 60;
 
@@ -10,70 +17,6 @@ const GEMINI_MODEL = REFLECT_GEMINI_MODEL;
 
 const GEMINI_API_URL =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
-
-/**
- * therapy_sessions has a CHECK constraint accepting only 'Slow' | 'Normal' |
- * 'Fast'. Anything else fails the insert outright, so this normalises whatever
- * arrives rather than trusting it.
- */
-function normalisePace(value: unknown): 'Slow' | 'Normal' | 'Fast' {
-  const v = String(value ?? '').trim().toLowerCase();
-  if (v === 'slow') return 'Slow';
-  if (v === 'fast') return 'Fast';
-  return 'Normal';
-}
-
-/**
- * Values therapy_sessions.detected_mode will accept (migration 0008).
- *
- * Kept in sync with SCHEMA_BLOCK. They disagreed once — the model was told to
- * return happy, reflective and motivated while the database rejected all
- * three — and every check-in that produced one was silently lost.
- */
-const ALLOWED_MODES = [
-  'calm', 'happy', 'hopeful', 'anxious', 'sad',
-  'angry', 'venting', 'reflective', 'neutral', 'motivated',
-] as const;
-
-/**
- * Guarantees a storable value.
- *
- * A model returning something outside the enum should cost the user a slightly
- * less precise label, not their entire check-in. Logged rather than swallowed,
- * because a mode appearing here means the prompt and the constraint have
- * drifted apart again and someone needs to widen one of them.
- */
-function normaliseMode(value: unknown): string {
-  const v = String(value ?? '').trim().toLowerCase();
-  if ((ALLOWED_MODES as readonly string[]).includes(v)) return v;
-  console.warn(
-    `[analyze-mood] model returned detected_mode "${v}", which the database ` +
-      'does not accept. Storing "neutral". Update SCHEMA_BLOCK and the ' +
-      'therapy_sessions_detected_mode_check constraint together.'
-  );
-  return 'neutral';
-}
-
-function normaliseRecommendations(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => String(item).trim())
-    .filter(Boolean)
-    .slice(0, 3);
-}
-
-/**
- * Reflect is available outside the US, so a model must not silently insert a
- * US-only crisis number. The escalation UI has the client's verified regional
- * resources; Reflect prose stays location-neutral when no user region was
- * supplied to the model.
- */
-function makeCrisisContactLocationSafe(value: string): string {
-  return value
-    .replace(/\b(?:call|dial|text)\s+(?:the\s+)?988\b/gi, 'contact your local crisis line or emergency services')
-    .replace(/\b988\s+(?:Suicide\s*&\s*Crisis\s+)?Lifeline\b/gi, 'your local crisis line or emergency services')
-    .replace(/\b(?:National\s+Suicide\s+Prevention|Suicide\s*&\s*Crisis)\s+Lifeline\b/gi, 'your local crisis line or emergency services');
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // System prompt — strict voice-first analysis
@@ -351,9 +294,7 @@ export async function POST(req: NextRequest) {
       { global: { headers: { Authorization: `Bearer ${token}` } } }
     );
 
-    const { error: dbError } = await supabaseAuth
-      .from('therapy_sessions')
-      .insert(sessionData);
+    const dbError = await insertTherapySession(supabaseAuth, sessionData);
 
     // Return everything except user_id
     const { user_id, ...result } = sessionData;

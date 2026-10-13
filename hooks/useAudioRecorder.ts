@@ -24,7 +24,7 @@ function pickMimeType(): string {
   return 'audio/webm';
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
+export async function blobToBase64(blob: Blob): Promise<string> {
   const buf = await blob.arrayBuffer();
   let binary = '';
   const bytes = new Uint8Array(buf);

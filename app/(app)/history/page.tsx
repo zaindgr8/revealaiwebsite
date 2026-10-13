@@ -274,8 +274,8 @@ function HistoryInner() {
               textAlign: 'center',
             }}
           >
-            One saved mood score: <strong>{trend[0].mood_score} / 100</strong>. Complete another
-            Reflect to reveal a trend.
+            One saved mood score: <strong>{trend[0].mood_score} / 100</strong>. Talk with Freya
+            again to reveal a trend.
           </div>
         )}
 

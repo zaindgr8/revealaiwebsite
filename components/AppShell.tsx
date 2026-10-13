@@ -13,11 +13,10 @@ type NavItem = { href: string; label: string; icon: string };
 
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
-  { href: '/therapy', label: 'Reflect Mood', icon: 'pulse' },
   { href: '/chat', label: 'Chat with Therapist', icon: 'chat' },
   // Real-time spoken call with Freya, over the Gemini Multimodal Live API.
-  // The component was finished in a76cb8e and then rendered nowhere — /therapy
-  // imported it and dropped it. /live is the page that finally shows it.
+  // Also where check-in results live now: the recorded Reflect flow on
+  // /therapy was retired and its results screen follows every call.
   { href: '/live', label: 'Talk to Therapist', icon: 'phone' },
   // Feature 2, complete end to end since 15 August: consent, record or upload,
   // speaker-labelled transcript, and the I-5 analysis in /api/intent/analyse.

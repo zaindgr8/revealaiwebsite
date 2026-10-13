@@ -17,7 +17,7 @@ function motivationalMessage(s: Stats) {
     return {
       icon: 'sparkles',
       title: 'Your first point is recorded',
-      body: 'Complete another Reflect when it feels useful, and your first trend will appear.',
+      body: 'Talk with Freya again when it feels useful, and your first trend will appear.',
       color: COLORS.blue,
     };
   if (s.streak >= 7)
@@ -190,7 +190,7 @@ function TrendsInner() {
                   Highlights
                 </div>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
-                  Best and tough-day comparisons appear after your second saved Reflect.
+                  Best and tough-day comparisons appear after your second saved session.
                 </div>
               </Card>
             )}
@@ -230,7 +230,7 @@ function TrendsInner() {
                 </div>
                 <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6 }}>
                   {stats.trendDelta === null
-                    ? 'Complete one more Reflect to establish a direction.'
+                    ? 'Complete one more call to establish a direction.'
                     : Math.abs(stats.trendDelta) <= 3
                       ? 'Your recent mood is broadly steady. Keep checking in to make the pattern clearer.'
                       : stats.trendDelta > 0
@@ -351,7 +351,7 @@ function ChartCard({
           role="status"
           style={{ minHeight: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' }}
         >
-          One score: {data[0]} / 100. Complete another Reflect to reveal a trend.
+          One score: {data[0]} / 100. Talk with Freya again to reveal a trend.
         </div>
       )}
     </Card>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { SpeechCapture, type CapturedSpeech } from '@/lib/speechCapture';
 import { COLORS } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
 import { supabase } from '@/lib/supabase';
@@ -24,6 +25,8 @@ const DANGER_SOFT = 'rgba(239, 68, 68, 0.08)';
 const MUTED_BAR_TOP = 'rgba(138, 138, 154, 0.45)';
 const MUTED_BAR_BOTTOM = 'rgba(138, 138, 154, 0.18)';
 
+export type { CapturedSpeech };
+
 export type LiveTranscriptTurn = {
   id: string;
   role: 'user' | 'assistant';
@@ -33,7 +36,9 @@ export type LiveTranscriptTurn = {
 interface LiveVoiceChatProps {
   onSessionComplete?: (
     transcript: LiveTranscriptTurn[],
-    durationSeconds: number
+    durationSeconds: number,
+    /** The user's own speech from the end of the call, for tone analysis. */
+    userSpeech: CapturedSpeech | null
   ) => void;
   systemInstructionText?: string;
   /**
@@ -144,6 +149,7 @@ export default function LiveVoiceChat({
   const connectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesRef = useRef<MessageLog[]>([]);
   const emittedTurnIdsRef = useRef(new Set<string>());
+  const speechCaptureRef = useRef(new SpeechCapture());
 
   useEffect(() => {
     isMutedRef.current = isMuted;
@@ -443,6 +449,7 @@ export default function LiveVoiceChat({
         for (let i = 0; i < inputData.length; i++) {
           pcm16[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7fff;
         }
+        speechCaptureRef.current.push(pcm16, activeSourcesRef.current.length > 0);
 
         // Convert PCM16 buffer to Base64 in safe chunks
         let binary = '';
@@ -507,6 +514,8 @@ export default function LiveVoiceChat({
           content: message.content.trim(),
         }));
       const durationSeconds = callDurationRef.current;
+      const userSpeech = speechCaptureRef.current.toWav();
+      speechCaptureRef.current.reset();
       sessionActiveRef.current = false;
       cleanup();
 
@@ -519,7 +528,7 @@ export default function LiveVoiceChat({
       }
 
       void Promise.resolve(
-        onSessionCompleteRef.current?.(transcript, durationSeconds)
+        onSessionCompleteRef.current?.(transcript, durationSeconds, userSpeech)
       ).catch((err) => console.error('[LiveVoiceChat] Could not finish session:', err));
     },
     [cleanup, finaliseCurrentTurn]
@@ -543,6 +552,7 @@ export default function LiveVoiceChat({
     messagesRef.current = [];
     setMessages([]);
     emittedTurnIdsRef.current.clear();
+    speechCaptureRef.current.reset();
     openTurnRef.current = { user: null, assistant: null };
     userTurnTextRef.current = '';
     previousUserTailRef.current = '';

@@ -99,7 +99,7 @@ export function ProfileStats({ sessions }: { sessions: TherapySession[] }) {
             fontSize: 13,
           }}
         >
-          No saved check-ins in this window. Choose a longer window or complete a new Reflect.
+          No saved check-ins in this window. Choose a longer window or talk with Freya.
         </div>
       ) : (
         <div

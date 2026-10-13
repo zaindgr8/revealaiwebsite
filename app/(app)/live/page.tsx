@@ -6,16 +6,29 @@ import { COLORS } from '@/lib/theme';
 import { Icon } from '@/components/Icon';
 import { AppShell } from '@/components/AppShell';
 import { MedicalDisclaimer } from '@/components/MedicalDisclaimer';
-import LiveVoiceChat, { type LiveTranscriptTurn } from '@/components/LiveVoiceChat';
+import { Logo } from '@/components/Logo';
+import { SessionResults } from '@/components/SessionResults';
+import LiveVoiceChat, { type CapturedSpeech, type LiveTranscriptTurn } from '@/components/LiveVoiceChat';
+import { VoiceSampleStep, type PreparedSample } from '@/components/VoiceSampleStep';
+import { blobToBase64 } from '@/hooks/useAudioRecorder';
+import { ELENA_LIVE_PERSONA } from '@/prompts/elena';
 import { deductSessionMinutes } from '@/lib/subscription';
 import { useAuth } from '@/lib/auth-context';
 import { VOICES, resolveVoice } from '@/lib/voices';
 import { supabase } from '@/lib/supabase';
+import { useCheckins } from '@/lib/session-data';
 import {
+  analyzeCall,
+  buildUserContext,
   createCoachSession,
   endCoachSession,
   flagSessionCrisis,
+  InsufficientCallError,
   saveChatMessage,
+  updateStreak,
+  type AnalysisResult,
+  type StreakData,
+  type TherapySession,
 } from '@/lib/ai';
 import { CrisisEscalation } from '@/components/CrisisEscalation';
 import type { CrisisResource } from '@/lib/crisis';
@@ -39,12 +52,106 @@ import type { CrisisResource } from '@/lib/crisis';
  * too. There is no second memory mechanism — a call becomes memory by
  * becoming an ordinary session.
  *
- * Minutes are billed off the call timer, the same way /therapy bills a Reflect
- * recording. Anything else would let the most expensive path run free.
+ * Minutes are billed off the call timer. Anything else would let the most
+ * expensive path run free.
+ *
+ * RESULTS
+ *
+ * The recorded Reflect check-in on /therapy is retired; this page replaced it.
+ * A session is two steps:
+ *
+ *  1. A short voice note (VoiceSampleStep). Clean audio, read quickly so
+ *     Freya opens the call knowing how the person sounds, and screened before
+ *     the call starts. Skippable, at the cost of precision.
+ *  2. The call. LiveVoiceChat keeps the user's own speech from its end.
+ *
+ * When the call ends, /api/analyze-call hears the voice note and the user's
+ * voice from the call and reads the captions, and returns the results Reflect
+ * did — mood score, Breakdown, Heart-to-Heart Reflection, Recommendations,
+ * Today's Action — plus how the call moved them. Saved as a therapy_sessions
+ * row so the Dashboard and Healing Journey count it. The voice note's seconds
+ * are billed with the call's; the analysis is not billed separately.
  */
+
+/**
+ * Appended to Freya's system instruction when a voice note was recorded.
+ * Phrased as background for her, not a script: she should sound like someone
+ * who listened, not someone reading out a report.
+ */
+function sampleBriefing(sample: PreparedSample): string {
+  const read = sample.read;
+  if (!read) {
+    return '\n\nBEFORE THIS CALL the user recorded a short voice note about how they are feeling, but it could not be reviewed in time. Do not mention it unless they do.';
+  }
+  const lines = [
+    '\n\nBEFORE THIS CALL the user recorded a short voice note about how they are feeling. Treat it as something they just told you.',
+    `What they said: "${read.transcript.slice(0, 1500)}"`,
+  ];
+  if (read.vocal_summary) lines.push(`How they sounded: ${read.vocal_summary}`);
+  if (read.opening_note) lines.push(`Where to start: ${read.opening_note}`);
+  lines.push(
+    'Open the call by warmly showing you heard it, in one or two sentences, then invite them to say more. Never mention scores, analysis or that their voice was assessed.'
+  );
+  return lines.join('\n');
+}
+
+type PersistedResults = {
+  results: AnalysisResult;
+  previousSession: TherapySession | null;
+  recentSessions: TherapySession[];
+  streak: StreakData | null;
+};
+
+// Kept so the results survive navigating away — Dashboard's "View Results"
+// lands here. Same pattern the Reflect results screen used.
+const resultsStorageKey = (userId: string) => `reveal_last_call_results_v1:${userId}`;
+
+function loadResults(userId: string): PersistedResults | null {
+  try {
+    const raw = localStorage.getItem(resultsStorageKey(userId));
+    return raw ? (JSON.parse(raw) as PersistedResults) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeResults(userId: string, data: PersistedResults | null) {
+  try {
+    if (data) localStorage.setItem(resultsStorageKey(userId), JSON.stringify(data));
+    else localStorage.removeItem(resultsStorageKey(userId));
+  } catch {
+    // Storage full or unavailable. The results are still on screen.
+  }
+}
+
 function LiveInner() {
   const router = useRouter();
-  const { profile, subStatus, refreshSubStatus } = useAuth();
+  const { user, profile, subStatus, refreshSubStatus } = useAuth();
+  const userId = user!.id;
+  const { data: checkins } = useCheckins();
+
+  const [callResults, setCallResults] = useState<PersistedResults | null>(() => loadResults(userId));
+  const [analysisState, setAnalysisState] = useState<'idle' | 'analyzing' | 'failed'>('idle');
+  const [analysisNote, setAnalysisNote] = useState<string | null>(null);
+  // Step 1. 'pending' until the user records a voice note or skips it.
+  const [sample, setSample] = useState<PreparedSample | 'pending' | 'skipped'>('pending');
+  // Read by handleSessionComplete, which is created before the sample exists.
+  const sampleRef = useRef<PreparedSample | null>(null);
+  // The voice note being shown on the results screen, so it can be replayed.
+  const [resultAudio, setResultAudio] = useState<PreparedSample | null>(null);
+  // While true the voice note cannot be redone: swapping it out would unmount
+  // the call.
+  const [callActive, setCallActive] = useState(false);
+  // The last analysis's inputs, kept so a failed analysis can be retried
+  // without asking the user to repeat a conversation.
+  type AnalysisArgs = [LiveTranscriptTurn[], number, string | null, PreparedSample | null, CapturedSpeech | null];
+  const lastAnalysisRef = useRef<AnalysisArgs | null>(null);
+  const [canRetryAnalysis, setCanRetryAnalysis] = useState(false);
+  // Read at call end. State from the render the call started in would be stale.
+  const checkinsRef = useRef<TherapySession[]>([]);
+  useEffect(() => {
+    checkinsRef.current = checkins ?? [];
+  }, [checkins]);
   const [showTopUp, setShowTopUp] = useState(false);
   const [consentGiven, setConsentGiven] = useState(false);
   const [lastCall, setLastCall] = useState<number | null>(null);
@@ -139,6 +246,7 @@ function LiveInner() {
 
   const handleSessionStart = useCallback(async () => {
     crisisRef.current = false;
+    setCallActive(true);
     persistedTurnIdsRef.current.clear();
     persistenceQueueRef.current = Promise.resolve();
     setSaveState('saving');
@@ -147,6 +255,7 @@ function LiveInner() {
       liveSessionIdRef.current = session.id;
     } catch (err) {
       setSaveState('failed');
+      setCallActive(false);
       throw err;
     }
   }, []);
@@ -173,23 +282,114 @@ function LiveInner() {
     return save;
   }, []);
 
+  /**
+   * Turns a finished call into its results screen. Runs alongside saving the
+   * conversation, not after it: the summary is for memory, the analysis is
+   * what the user is waiting to see.
+   */
+  const analyseCall = useCallback(
+    async (
+      transcript: LiveTranscriptTurn[],
+      durationSeconds: number,
+      sessionId: string | null,
+      voiceNote: PreparedSample | null,
+      userSpeech: CapturedSpeech | null
+    ) => {
+      // The recent sessions as they were before this call, so the comparison
+      // and trend banner compare against the last session rather than this one.
+      const recent = checkinsRef.current.slice(0, 14);
+      lastAnalysisRef.current = [transcript, durationSeconds, sessionId, voiceNote, userSpeech];
+      setAnalysisState('analyzing');
+      setAnalysisNote(null);
+      setCanRetryAnalysis(false);
+      try {
+        const callAudio = userSpeech
+          ? {
+              base64: await blobToBase64(userSpeech.blob),
+              mimeType: userSpeech.mimeType,
+              durationSeconds: userSpeech.durationSeconds,
+            }
+          : null;
+        const results = await analyzeCall({
+          transcript: transcript.map(({ role, content }) => ({ role, content })),
+          durationSeconds,
+          userContext: buildUserContext(recent),
+          coachSessionId: sessionId,
+          sample: voiceNote
+            ? { ...voiceNote.audio, acousticFeatures: voiceNote.features }
+            : null,
+          callAudio,
+        });
+
+        let streak: StreakData | null = null;
+        if (results.saved !== false) {
+          try {
+            streak = await updateStreak();
+          } catch {}
+        }
+
+        const next: PersistedResults = {
+          results,
+          previousSession: recent[0] ?? null,
+          recentSessions: recent,
+          streak,
+        };
+        storeResults(userId, next);
+        setCallResults(next);
+        setResultAudio(voiceNote);
+        lastAnalysisRef.current = null;
+        setAnalysisState('idle');
+      } catch (err) {
+        console.error('[live] call analysis failed:', err);
+        setAnalysisState('failed');
+        setCanRetryAnalysis(!(err instanceof InsufficientCallError));
+        setAnalysisNote(
+          err instanceof InsufficientCallError
+            ? err.message
+            : 'We could not put together your results for this call just now. The conversation itself is saved in your Sessions.'
+        );
+      }
+    },
+    [userId]
+  );
+
   const handleSessionComplete = useCallback(
-    async (transcript: LiveTranscriptTurn[], durationSeconds: number) => {
+    async (
+      transcript: LiveTranscriptTurn[],
+      durationSeconds: number,
+      userSpeech: CapturedSpeech | null
+    ) => {
+      setCallActive(false);
       setLastCall(durationSeconds);
       setSaveState('saving');
       const sessionId = liveSessionIdRef.current;
+      // A voice note belongs to one call. The next call records a fresh one.
+      const voiceNote = sampleRef.current;
+      sampleRef.current = null;
+      setSample('pending');
 
       // Billing first, and on its own. A call that happened costs minutes even
       // if saving the transcript fails, and a transcript worth keeping must
       // not be dropped because the balance call failed.
-      if (durationSeconds > 0) {
+      // The voice note is billed here, with the call, so the two round up to
+      // whole minutes once rather than twice.
+      const billedSeconds = durationSeconds + (voiceNote?.audio.durationSeconds ?? 0);
+      if (billedSeconds > 0) {
         try {
-          const result = await deductSessionMinutes(durationSeconds);
+          const result = await deductSessionMinutes(billedSeconds);
           if (result.needsTopUp) setShowTopUp(true);
           await refreshSubStatus();
         } catch {
           // The subscription page is the source of truth for the balance.
         }
+      }
+
+      // T-7/T-8: no scores and no "today's action" straight after a crisis
+      // disclosure. The support view is the only thing on screen.
+      if (!crisisRef.current && (voiceNote || transcript.some((t) => t.role === 'user'))) {
+        void analyseCall(transcript, durationSeconds, sessionId, voiceNote, userSpeech);
+      } else if (voiceNote) {
+        URL.revokeObjectURL(voiceNote.blobUrl);
       }
 
       if (!sessionId) {
@@ -235,16 +435,130 @@ function LiveInner() {
         }
       }
     },
-    [refreshSubStatus]
+    [analyseCall, refreshSubStatus]
   );
 
+  const handleSampleReady = (prepared: PreparedSample) => {
+    sampleRef.current = prepared;
+    setSample(prepared);
+  };
+
+  const handleSampleSkip = () => {
+    sampleRef.current = null;
+    setSample('skipped');
+  };
+
+  const handleRedoSample = () => {
+    if (sampleRef.current) URL.revokeObjectURL(sampleRef.current.blobUrl);
+    sampleRef.current = null;
+    setSample('pending');
+  };
+
+  // Screening the voice note uses the same path as a spoken turn in the call.
+  const handleSampleScreen = useCallback(
+    async (text: string) => (await handleUserTurn(text)) !== false,
+    [handleUserTurn]
+  );
+
+  const handleNewCall = () => {
+    if (resultAudio) URL.revokeObjectURL(resultAudio.blobUrl);
+    setResultAudio(null);
+    storeResults(userId, null);
+    setCallResults(null);
+    setAnalysisNote(null);
+    setAnalysisState('idle');
+  };
+
+  const handleResultsSaved = (saved: AnalysisResult, streak: StreakData | null) => {
+    setCallResults((current) => {
+      if (!current) return current;
+      const next = { ...current, results: saved, streak };
+      storeResults(userId, next);
+      return next;
+    });
+  };
+
   const loading = instruction === null;
+
+  const callBlockedReason = !consentGiven
+    ? 'Confirm the recording and memory consent above first.'
+    : saveState === 'saving' && lastCall !== null
+      ? 'Finishing and saving your previous call...'
+      : showTopUp || subStatus?.needsTopUp
+        ? 'Add session minutes in Settings before starting another call.'
+        : undefined;
 
   // The voice Freya will speak with on this call, named on screen so the user
   // recognises it before the call rather than during it. resolveVoice already
   // guarantees the id is one of VOICES, so the tone lookup always matches.
   const voiceId = resolveVoice(profile?.therapist_voice);
   const voice = VOICES.find((v) => v.id === voiceId);
+
+  if (!crisis && analysisState === 'analyzing') {
+    return (
+      <AppShell title="Talk to Freya" subtitle="Putting your call together">
+        <div
+          style={{
+            minHeight: '60vh',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+          }}
+        >
+          <div className="animate-pulse-soft">
+            <Logo size={38} />
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 700, color: COLORS.textPrimary, marginTop: 32, fontFamily: 'var(--font-syne)', letterSpacing: '-0.5px' }}>
+            Freya is reflecting on your call...
+          </div>
+          <div style={{ fontSize: 14, color: COLORS.textSecondary, marginTop: 8 }}>
+            Reading your mood, energy and stress from what you shared
+          </div>
+        </div>
+      </AppShell>
+    );
+  }
+
+  if (!crisis && callResults) {
+    return (
+      <AppShell title="Call Results" subtitle="Your conversation, decoded">
+        {showTopUp && (
+          <Banner>
+            You are low on session minutes. Top up in{' '}
+            <strong style={{ color: COLORS.textPrimary }}>Settings</strong> to keep talking
+            with Freya.
+          </Banner>
+        )}
+        <SessionResults
+          results={callResults.results}
+          previousSession={callResults.previousSession}
+          recentSessions={callResults.recentSessions}
+          streak={callResults.streak}
+          heading="Your call is in"
+          subheading={
+            callResults.results.evidence?.voice_sample === false
+              ? 'Estimated mood, energy and stress — based on what you shared with Freya.'
+              : 'Estimated mood, energy and stress — based on what you said and how you sounded, before and during your call.'
+          }
+          newSessionLabel="New call"
+          onNewSession={handleNewCall}
+          onSaved={handleResultsSaved}
+          audio={
+            resultAudio?.features
+              ? {
+                  blobUrl: resultAudio.blobUrl,
+                  envelope: resultAudio.features.waveform_envelope,
+                  segments: resultAudio.features.segment_emotions,
+                  duration: resultAudio.features.duration_seconds || resultAudio.audio.durationSeconds,
+                }
+              : null
+          }
+        />
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell title="Talk to Freya" subtitle="A real conversation, out loud, whenever you need it">
@@ -254,6 +568,27 @@ function LiveInner() {
             You are low on session minutes. Top up in{' '}
             <strong style={{ color: COLORS.textPrimary }}>Settings</strong> to keep talking
             with Freya.
+          </Banner>
+        )}
+
+        {analysisNote && (
+          <Banner>
+            {analysisNote}
+            {canRetryAnalysis && (
+              <>
+                {' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const args = lastAnalysisRef.current;
+                    if (args) void analyseCall(...args);
+                  }}
+                  style={{ background: 'none', border: 'none', padding: 0, color: COLORS.blue, textDecoration: 'underline', fontWeight: 700, cursor: 'pointer', fontSize: 'inherit' }}
+                >
+                  Try again
+                </button>
+              </>
+            )}
           </Banner>
         )}
 
@@ -273,9 +608,10 @@ function LiveInner() {
             textAlign: 'center',
           }}
         >
-          Tap call, allow your microphone, and just start talking. Freya listens, answers
-          out loud, and you can jump in whenever you like. Minutes come off your plan while
-          you talk.
+          Start with a short voice note so Freya can hear how you are, then call and just
+          talk — she answers out loud and you can jump in whenever you like. When you hang
+          up you&apos;ll see your mood, energy and stress, how the call moved them, a
+          reflection, and today&apos;s action. Minutes come off your plan while you talk.
         </div>
 
         {/*
@@ -342,9 +678,11 @@ function LiveInner() {
               style={{ marginTop: 3 }}
             />
             <span>
-              I agree that my voice will be securely streamed to our voice provider (Google)
-              during this call, that captions will be saved in my Sessions so Freya can
-              remember them, and that call time will be deducted from my plan.
+              I agree that my voice note and my voice during this call will be securely sent
+              to our voice provider (Google) to hold the conversation and to analyse my mood,
+              energy and stress; that captions and results will be saved in my Sessions so
+              Freya can remember them; and that voice note and call time will be deducted
+              from my plan. Audio is not stored.
             </span>
           </label>
         )}
@@ -369,24 +707,63 @@ function LiveInner() {
           >
             Freya is catching up on how you&apos;ve been...
           </div>
-        ) : (
-          <LiveVoiceChat
-            onSessionComplete={handleSessionComplete}
-            onSessionStart={handleSessionStart}
-            onTranscriptTurn={handleTranscriptTurn}
-            voiceName={voiceId}
-            systemInstructionText={instruction || undefined}
-            onUserTurn={handleUserTurn}
-            disabledReason={
-              !consentGiven
-                ? 'Confirm the recording and memory consent above first.'
-                : saveState === 'saving' && lastCall !== null
-                  ? 'Finishing and saving your previous call...'
-                : showTopUp || subStatus?.needsTopUp
-                  ? 'Add session minutes in Settings before starting another call.'
-                  : undefined
-            }
+        ) : sample === 'pending' ? (
+          <VoiceSampleStep
+            disabledReason={callBlockedReason}
+            onScreen={handleSampleScreen}
+            onReady={handleSampleReady}
+            onSkip={handleSampleSkip}
           />
+        ) : (
+          <>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 10,
+                flexWrap: 'wrap',
+                padding: '10px 14px',
+                marginBottom: 14,
+                borderRadius: 14,
+                border: `1px solid ${COLORS.cardBorder}`,
+                background: COLORS.card,
+                fontSize: 12.5,
+                color: COLORS.textSecondary,
+              }}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Icon
+                  name={sample === 'skipped' ? 'mic' : 'checkmark'}
+                  size={14}
+                  color={sample === 'skipped' ? COLORS.textMuted : COLORS.success}
+                />
+                {sample === 'skipped'
+                  ? 'No voice note — results will be read from the call only.'
+                  : `Voice note ready (${sample.audio.durationSeconds}s). Freya has heard it.`}
+              </span>
+              {!callActive && <button
+                type="button"
+                onClick={handleRedoSample}
+                style={{ background: 'none', border: 'none', color: COLORS.blue, textDecoration: 'underline', fontSize: 12.5, cursor: 'pointer' }}
+              >
+                {sample === 'skipped' ? 'Record one' : 'Re-record'}
+              </button>}
+            </div>
+            <LiveVoiceChat
+              onSessionComplete={handleSessionComplete}
+              onSessionStart={handleSessionStart}
+              onTranscriptTurn={handleTranscriptTurn}
+              voiceName={voiceId}
+              systemInstructionText={
+                sample === 'skipped'
+                  ? instruction || undefined
+                  : (instruction || ELENA_LIVE_PERSONA) + sampleBriefing(sample)
+              }
+              onUserTurn={handleUserTurn}
+              disabledReason={callBlockedReason}
+            />
+          </>
         )}
 
         {!crisis && !loading && !contextFailed && (

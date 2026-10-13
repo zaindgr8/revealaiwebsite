@@ -52,6 +52,20 @@ export type TherapySession = {
    */
   saved?: boolean;
   save_error?: string;
+  /** Set when the analysis came from a live call: the call's coach_sessions row. */
+  coach_session_id?: string | null;
+  /** Live calls with a voice sample: how mood and stress moved across the call. */
+  call_shift?: CallShift | null;
+  /** Live calls only, not stored: what the analysis was able to draw on. */
+  evidence?: { voice_sample: boolean; call_audio: boolean };
+};
+
+export type CallShift = {
+  start_mood: number;
+  start_stress: number;
+  end_mood: number;
+  end_stress: number;
+  note: string | null;
 };
 
 export type AnalysisResult = Omit<TherapySession, 'id' | 'created_at'>;
@@ -296,6 +310,130 @@ export async function analyzeMood({
   }
 
   if (data.saved !== false) notifySessionDataChanged();
+  return data as AnalysisResult;
+}
+
+/**
+ * Thrown when a call had too little from the user to analyse. The call itself
+ * is still saved; there is simply no results screen for it.
+ */
+export class InsufficientCallError extends Error {}
+
+export type CallAudio = {
+  base64: string;
+  mimeType: string;
+  durationSeconds: number;
+};
+
+/** The quick read of the pre-call voice sample. Not saved; see /api/voice-sample. */
+export type VoiceSampleRead = {
+  transcript: string;
+  mood_score: number | null;
+  energy: number | null;
+  stress: number | null;
+  detected_mode: string;
+  vocal_summary: string;
+  opening_note: string;
+};
+
+/**
+ * How long the user waits between recording and calling. Past this the call
+ * goes ahead without the quick read — the final analysis hears the voice note
+ * again regardless, so only Freya's tailored opening is lost.
+ */
+const VOICE_SAMPLE_TIMEOUT_MS = 15_000;
+
+export async function readVoiceSample(audio: CallAudio): Promise<VoiceSampleRead> {
+  const token = await getAuthToken();
+  const res = await fetch('/api/voice-sample', {
+    signal: AbortSignal.timeout(VOICE_SAMPLE_TIMEOUT_MS),
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      audio_base64: audio.base64,
+      mime_type: audio.mimeType,
+      duration_seconds: audio.durationSeconds,
+    }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.error) {
+    const message = data?.error || 'Could not read the voice sample';
+    if (data?.insufficient) throw new InsufficientCallError(message);
+    throw new Error(message);
+  }
+  return data as VoiceSampleRead;
+}
+
+/**
+ * Results for a finished live call: the same AnalysisResult a Reflect check-in
+ * produced, from the pre-call voice sample, the user's voice during the call
+ * and the call's captions, saved to therapy_sessions.
+ */
+export async function analyzeCall({
+  transcript,
+  durationSeconds,
+  userContext,
+  coachSessionId,
+  sample,
+  callAudio,
+}: {
+  transcript: ChatMessage[];
+  durationSeconds: number;
+  userContext?: UserContext;
+  coachSessionId?: string | null;
+  sample?: (CallAudio & { acousticFeatures?: AcousticFeatures }) | null;
+  callAudio?: CallAudio | null;
+}): Promise<AnalysisResult> {
+  const token = await getAuthToken();
+  const res = await fetch('/api/analyze-call', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      transcript,
+      duration_seconds: durationSeconds,
+      user_context: userContext,
+      coach_session_id: coachSessionId ?? null,
+      sample: sample
+        ? {
+            audio_base64: sample.base64,
+            mime_type: sample.mimeType,
+            duration_seconds: sample.durationSeconds,
+            // The envelope and segments are for drawing, not analysis.
+            acoustic_features: sample.acousticFeatures
+              ? { ...sample.acousticFeatures, waveform_envelope: undefined, segment_emotions: undefined }
+              : null,
+          }
+        : null,
+      call_audio: callAudio
+        ? {
+            audio_base64: callAudio.base64,
+            mime_type: callAudio.mimeType,
+            duration_seconds: callAudio.durationSeconds,
+          }
+        : null,
+    }),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || data?.error) {
+    const message = data?.error || 'Call analysis failed';
+    if (data?.insufficient) throw new InsufficientCallError(message);
+    throw new Error(message);
+  }
+
+  if (data?.saved === false) {
+    console.error(
+      '[analyzeCall] Analysis returned but was NOT saved. Cause: ' +
+        (data.save_error ?? 'unknown')
+    );
+  } else {
+    notifySessionDataChanged();
+  }
   return data as AnalysisResult;
 }
 
@@ -585,11 +723,24 @@ export async function getHistoryFeed({
   limit = HISTORY_PAGE_SIZE,
   before,
 }: { limit?: number; before?: string } = {}): Promise<HistoryItem[]> {
-  let checkins = supabase
-    .from('therapy_sessions')
-    .select('id, created_at, mood_score, detected_mode, transcript_summary')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+  // coach_session_id links a live call's analysis to the call (migration
+  // 0015). Until that migration is applied the column is missing and selecting
+  // it fails the query, so the feed falls back to the columns it always had.
+  const checkinQuery = (columns: string) => {
+    let q = supabase
+      .from('therapy_sessions')
+      .select(columns)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    if (before) q = q.lt('created_at', before);
+    return q;
+  };
+  const baseCheckinColumns = 'id, created_at, mood_score, detected_mode, transcript_summary';
+  const checkins = checkinQuery(`${baseCheckinColumns}, coach_session_id`).then((res) =>
+    res.error && /coach_session_id/.test(res.error.message)
+      ? checkinQuery(baseCheckinColumns)
+      : res
+  );
 
   // Only standalone conversations. A check-in conversation is already
   // represented by its therapy_sessions row — listing both would show one
@@ -605,10 +756,7 @@ export async function getHistoryFeed({
     .order('created_at', { ascending: false })
     .limit(limit);
 
-  if (before) {
-    checkins = checkins.lt('created_at', before);
-    chats = chats.lt('created_at', before);
-  }
+  if (before) chats = chats.lt('created_at', before);
 
   // I-6: "Results are viewable later from history."
   //
@@ -638,8 +786,25 @@ export async function getHistoryFeed({
     console.error('[history] intent sessions unavailable:', intentRes.error.message);
   }
 
+  type CheckinRow = {
+    id: string;
+    created_at: string;
+    mood_score: number | null;
+    detected_mode: string | null;
+    transcript_summary: string | null;
+    coach_session_id?: string | null;
+  };
+  const checkinRows = (checkinRes.data ?? []) as unknown as CheckinRow[];
+
+  // A live call that was analysed is one session with two rows: the
+  // conversation and its scores. The scores row carries the mood and the
+  // summary, so it is the one listed.
+  const analysedCalls = new Set(
+    checkinRows.map((r) => r.coach_session_id).filter((id): id is string => !!id)
+  );
+
   const items: HistoryItem[] = [
-    ...(checkinRes.data ?? []).map((r) => ({
+    ...checkinRows.map((r) => ({
       id: r.id as string,
       kind: 'checkin' as const,
       created_at: r.created_at as string,
@@ -649,7 +814,7 @@ export async function getHistoryFeed({
       topics: null,
       crisis_flagged: false,
     })),
-    ...(chatRes.data ?? []).map((r) => ({
+    ...(chatRes.data ?? []).filter((r) => !analysedCalls.has(r.id as string)).map((r) => ({
       id: r.id as string,
       kind: (r.source === 'live' ? 'live' : 'chat') as 'live' | 'chat',
       created_at: r.created_at as string,
