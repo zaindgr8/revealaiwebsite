@@ -113,6 +113,44 @@ export function VoiceSampleStep({ disabledReason, onScreen, onReady, onSkip }: P
         textAlign: 'center',
       }}
     >
+      {/* Voice Icon / Visualizer at Top */}
+      <div style={{ height: 60, marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {processing ? (
+          <div className="animate-pulse-soft" style={{ display: 'inline-flex' }}>
+            <div
+              style={{
+                width: 52,
+                height: 52,
+                borderRadius: '50%',
+                background: 'rgba(37, 99, 235, 0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon name="mic" size={26} color={COLORS.blue} />
+            </div>
+          </div>
+        ) : isRecording && stream ? (
+          <WaveformVisualizer active stream={stream} />
+        ) : (
+          <div
+            style={{
+              width: 52,
+              height: 52,
+              borderRadius: '50%',
+              background: 'rgba(37, 99, 235, 0.08)',
+              border: `1px solid ${COLORS.cardBorder}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Icon name="mic" size={26} color={COLORS.blue} />
+          </div>
+        )}
+      </div>
+
       <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.blue, textTransform: 'uppercase', letterSpacing: 0.8 }}>
         Step 1 of 2 · Voice note
       </div>
@@ -120,30 +158,19 @@ export function VoiceSampleStep({ disabledReason, onScreen, onReady, onSkip }: P
         How are you feeling right now?
       </div>
       <div style={{ fontSize: 13, color: COLORS.textSecondary, lineHeight: 1.6, marginTop: 6, maxWidth: 420, marginInline: 'auto' }}>
-        Talk for {SAMPLE_MIN_SECONDS}–{SAMPLE_MAX_SECONDS} seconds about your day and what&apos;s on your mind.
+        Talk about your day and what&apos;s on your mind.
         Freya listens to how you sound as well as what you say, opens the call with it, and
         compares it with how you feel by the end.
       </div>
 
       {processing ? (
-        <div style={{ padding: '32px 0 12px' }}>
-          <div className="animate-pulse-soft" style={{ display: 'inline-flex' }}>
-            <Icon name="mic" size={30} color={COLORS.blue} />
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary, marginTop: 12 }}>
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 14, fontWeight: 700, color: COLORS.textPrimary }}>
             Freya is listening to your voice note...
           </div>
         </div>
       ) : (
-        <>
-          <div style={{ height: 64, margin: '20px 0 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {isRecording && stream ? (
-              <WaveformVisualizer active stream={stream} />
-            ) : (
-              <Icon name="mic" size={30} color={COLORS.textMuted} />
-            )}
-          </div>
-
+        <div style={{ marginTop: 20 }}>
           {isRecording && (
             <div style={{ fontSize: 13, color: COLORS.textSecondary, marginBottom: 12 }}>
               {seconds}s · {canStop ? `up to ${remaining}s more` : `${SAMPLE_MIN_SECONDS - seconds}s until you can finish`}
@@ -164,7 +191,7 @@ export function VoiceSampleStep({ disabledReason, onScreen, onReady, onSkip }: P
               padding: '13px 26px',
               fontSize: 14,
               fontWeight: 800,
-              cursor: 'pointer',
+              cursor: (!isRecording && disabledReason) || (isRecording && !canStop) ? 'not-allowed' : 'pointer',
               opacity: (!isRecording && disabledReason) || (isRecording && !canStop) ? 0.55 : 1,
             }}
           >
@@ -174,7 +201,7 @@ export function VoiceSampleStep({ disabledReason, onScreen, onReady, onSkip }: P
           {!isRecording && disabledReason && (
             <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 10 }}>{disabledReason}</div>
           )}
-        </>
+        </div>
       )}
 
       {(note || error) && (

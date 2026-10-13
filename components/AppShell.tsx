@@ -13,11 +13,12 @@ type NavItem = { href: string; label: string; icon: string };
 
 const NAV: NavItem[] = [
   { href: '/home', label: 'Dashboard', icon: 'home' },
+  { href: '/live', label: 'Talk to Therapist', icon: 'phone' },
   { href: '/chat', label: 'Chat with Therapist', icon: 'chat' },
   // Real-time spoken call with Freya, over the Gemini Multimodal Live API.
   // Also where check-in results live now: the recorded Reflect flow on
   // /therapy was retired and its results screen follows every call.
-  { href: '/live', label: 'Talk to Therapist', icon: 'phone' },
+  
   // Feature 2, complete end to end since 15 August: consent, record or upload,
   // speaker-labelled transcript, and the I-5 analysis in /api/intent/analyse.
   // It was reachable here for two demos before it could finish, which was a

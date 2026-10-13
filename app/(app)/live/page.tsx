@@ -481,7 +481,7 @@ function LiveInner() {
   const loading = instruction === null;
 
   const callBlockedReason = !consentGiven
-    ? 'Confirm the recording and memory consent above first.'
+    ? 'Confirm the recording and memory consent below first.'
     : saveState === 'saving' && lastCall !== null
       ? 'Finishing and saving your previous call...'
       : showTopUp || subStatus?.needsTopUp
@@ -599,34 +599,7 @@ function LiveInner() {
           </Banner>
         )}
 
-        <div
-          style={{
-            fontSize: 13,
-            color: COLORS.textSecondary,
-            lineHeight: 1.6,
-            marginBottom: 18,
-            textAlign: 'center',
-          }}
-        >
-          Start with a short voice note so Freya can hear how you are, then call and just
-          talk — she answers out loud and you can jump in whenever you like. When you hang
-          up you&apos;ll see your mood, energy and stress, how the call moved them, a
-          reflection, and today&apos;s action. Minutes come off your plan while you talk.
-        </div>
-
-        {/*
-          The voice, named and changeable from here.
-
-          The paragraph above used to end with "You can change how she sounds in
-          Settings", which is a direction, not a control: it named neither the
-          current voice nor a way to reach the setting. A user who dislikes the
-          voice finds that out on this page, so the way out belongs on this page
-          too. The link carries a fragment so Settings opens on that card.
-
-          Shown while a call runs as well. A change saved mid-call applies to the
-          next one, which is what the Settings card says, so the line stays
-          honest either way.
-        */}
+        {/* The voice, named and changeable from here */}
         {!crisis && (
           <div
             style={{
@@ -635,58 +608,38 @@ function LiveInner() {
               justifyContent: 'center',
               flexWrap: 'wrap',
               gap: 8,
-              marginBottom: 16,
+              marginBottom: 18,
               fontSize: 12.5,
               color: COLORS.textMuted,
             }}
           >
-            <Icon name="mic" size={14} color={COLORS.textMuted} />
+            <div
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: 'rgba(37, 99, 235, 0.08)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Icon name="mic" size={14} color={COLORS.blue} />
+            </div>
             <span>
               Voice: <strong style={{ color: COLORS.textSecondary }}>{voice?.name ?? 'Freya'}</strong>
               {voice ? ` — ${voice.tone.toLowerCase()}` : ''}
             </span>
             <Link
               href="/settings#therapist-voice"
-              style={{ color: COLORS.blue, textDecoration: 'underline' }}
+              style={{ color: COLORS.blue, textDecoration: 'underline', fontWeight: 600 }}
             >
               Change
             </Link>
           </div>
         )}
 
-        {!crisis && !loading && (
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 10,
-              padding: '12px 14px',
-              marginBottom: 16,
-              border: `1px solid ${consentGiven ? COLORS.blue : COLORS.cardBorder}`,
-              borderRadius: 14,
-              background: consentGiven ? 'rgba(37, 99, 235, 0.08)' : COLORS.card,
-              cursor: 'pointer',
-              fontSize: 12.5,
-              lineHeight: 1.55,
-              color: COLORS.textSecondary,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={consentGiven}
-              onChange={(event) => setConsentGiven(event.target.checked)}
-              style={{ marginTop: 3 }}
-            />
-            <span>
-              I agree that my voice note and my voice during this call will be securely sent
-              to our voice provider (Google) to hold the conversation and to analyse my mood,
-              energy and stress; that captions and results will be saved in my Sessions so
-              Freya can remember them; and that voice note and call time will be deducted
-              from my plan. Audio is not stored.
-            </span>
-          </label>
-        )}
-
+        {/* Main call / voice note interaction */}
         {crisis ? (
           // No onAcknowledge work to do: LiveVoiceChat already closed the
           // socket and released the microphone, and handleSessionComplete
@@ -765,6 +718,56 @@ function LiveInner() {
             />
           </>
         )}
+
+        {/* Text boxes at bottom: consent checkbox and overview info */}
+        {!crisis && !loading && (
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 10,
+              padding: '12px 14px',
+              marginTop: 18,
+              marginBottom: 14,
+              border: `1px solid ${consentGiven ? COLORS.blue : COLORS.cardBorder}`,
+              borderRadius: 14,
+              background: consentGiven ? 'rgba(37, 99, 235, 0.08)' : COLORS.card,
+              cursor: 'pointer',
+              fontSize: 12.5,
+              lineHeight: 1.55,
+              color: COLORS.textSecondary,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={consentGiven}
+              onChange={(event) => setConsentGiven(event.target.checked)}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              I agree that my voice note and my voice during this call will be securely sent
+              to our voice provider (Google) to hold the conversation and to analyse my mood,
+              energy and stress; that captions and results will be saved in my Sessions so
+              Freya can remember them; and that voice note and call time will be deducted
+              from my plan. Audio is not stored.
+            </span>
+          </label>
+        )}
+
+        <div
+          style={{
+            fontSize: 12.5,
+            color: COLORS.textMuted,
+            lineHeight: 1.6,
+            textAlign: 'center',
+            marginBottom: 10,
+          }}
+        >
+          Start with a short voice note so Freya can hear how you are, then call and just
+          talk — she answers out loud and you can jump in whenever you like. When you hang
+          up you&apos;ll see your mood, energy and stress, how the call moved them, a
+          reflection, and today&apos;s action. Minutes come off your plan while you talk.
+        </div>
 
         {!crisis && !loading && !contextFailed && (
           <div
